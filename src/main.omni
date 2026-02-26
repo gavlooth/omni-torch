@@ -1,0 +1,100 @@
+;; Omni Torch Demo — Idiomatic PyTorch from Omni Lisp
+
+(import "../lib/torch.omni" :all)
+
+(define (say s) (begin (display s) (newline)))
+
+(say "=== Omni Torch Demo ===")
+(say "")
+
+;; --- Tensor Creation ---
+(say "--- Tensor Creation ---")
+
+(define a (tensor/zeros '(3)))
+(display "zeros(3):        ") (tensor/print a)
+
+(define b (tensor/ones '(2 3)))
+(display "ones(2,3):       ") (tensor/print b)
+
+(define eye (tensor/eye 3))
+(display "eye(3):          ") (tensor/print eye)
+
+(say "")
+
+;; --- Dot-path metadata ---
+(say "--- Tensor Metadata (dot-path) ---")
+
+(display "b.shape: ") (display b.shape) (newline)
+(say (string-append "b.ndim:  " (number->string b.ndim)))
+(say (string-append "b.numel: " (number->string b.numel)))
+
+(say "")
+
+;; --- Dispatched Arithmetic ---
+(say "--- Dispatched Arithmetic ---")
+
+(define x (tensor/ones '(4)))
+(define y (* x 3))
+(display "ones(4) * 3:     ") (tensor/print y)
+
+(define z (+ x y))
+(display "x + y:           ") (tensor/print z)
+
+(define neg-z (tensor/neg z))
+(display "-(x+y):          ") (tensor/print neg-z)
+
+(say "")
+
+;; --- Linear Algebra ---
+(say "--- Linear Algebra ---")
+
+(define m1 (tensor/ones '(2 3)))
+(define m2 (tensor/ones '(3 2)))
+(define prod (tensor/mm m1 m2))
+(display "ones(2,3) @ ones(3,2): ") (tensor/print prod)
+
+(say "")
+
+;; --- Reductions ---
+(say "--- Reductions ---")
+
+(define t (tensor/to-dtype (tensor/arange 1 6 1) torch/float32))
+(say (string-append "sum(1..5):  " (number->string (tensor/item (tensor/sum t)))))
+(say (string-append "mean(1..5): " (number->string (tensor/item (tensor/mean t)))))
+
+(say "")
+
+;; --- Dispatched Math ---
+(say "--- Math ---")
+
+(define sq (tensor/pow (tensor/to-dtype (tensor/arange 1 5 1) torch/float32) 2))
+(display "arange(1,5)^2:   ") (tensor/print sq)
+
+(say "")
+
+;; --- Dispatched ref and length ---
+(say "--- Element Access (dispatched ref + dot-path) ---")
+
+(say (string-append "ref(sq, 0):  " (number->string (ref sq 0))))
+(say (string-append "sq.[0]:      " (number->string sq.[0])))
+(say (string-append "sq.[3]:      " (number->string sq.[3])))
+(say (string-append "length(sq):  " (number->string (length sq))))
+
+(say "")
+
+;; --- NN ---
+(say "--- NN Ops ---")
+
+(define logits (tensor/to-dtype (tensor/arange 0 5 1) torch/float32))
+(define probs (tensor/softmax logits 0))
+(display "softmax(0..5):   ") (tensor/print probs)
+(say (string-append "sum(softmax):    " (number->string (tensor/item (tensor/sum probs)))))
+
+(say "")
+
+;; --- Cleanup ---
+(tensor/free-all (list a b eye x y z neg-z))
+(tensor/free-all (list m1 m2 prod t sq))
+(tensor/free-all (list logits probs))
+
+(say "=== All tensors freed. Done! ===")

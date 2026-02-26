@@ -1,0 +1,139 @@
+;; XOR Neural Network — Algebraic Effects Demo
+;;
+;; Trains a 2->4->1 sigmoid network on XOR with manual backprop.
+;; Uses algebraic effects for monitoring and early stopping:
+;;
+;;   The training loop signals (signal eff (list epoch loss)) at
+;;   checkpoints.  The handler decides what to display and whether
+;;   to stop — its resolved value tells the body to continue or halt.
+;;   Swapping the handler changes behavior WITHOUT touching the
+;;   training code.  That's algebraic effects in action.
+;;
+;; Run:  make xor
+
+(import "../lib/torch.omni" :all)
+
+;; -- Data -------------------------------------------------------
+
+(define (make-xor-data)
+  (let (z    (tensor/zeros '(2))
+        o    (tensor/ones  '(2))
+        col0 (tensor/cat z o 0)
+        p    (tensor/to-dtype (tensor/arange 0 2 1) torch/float32)
+        col1 (tensor/cat p p 0)
+        x    (tensor/cat (tensor/unsqueeze col0 1)
+                         (tensor/unsqueeze col1 1) 1)
+        y    (tensor/unsqueeze
+               (- (+ col0 col1) (* (* col0 col1) 2)) 1))
+    (list x y)))
+
+;; -- Network ----------------------------------------------------
+
+(define (init-weights r c)
+  (- (* (tensor/rand (list r c)) 2) (tensor/ones (list r c))))
+
+(define (forward x w1 w2)
+  (let (h (tensor/sigmoid (tensor/mm x w1)))
+    (list h (tensor/sigmoid (tensor/mm h w2)))))
+
+(define (train-step x y w1 w2 lr)
+  (let (fwd  (forward x w1 w2)
+        h    (car fwd)
+        out  (car (cdr fwd))
+        diff (- out y)
+        loss (tensor/item (tensor/mean (tensor/pow diff 2)))
+        so   (* out (- (tensor/ones '(4 1)) out))
+        dz2  (* diff so)
+        dw2  (tensor/mm (tensor/transpose h 0 1) dz2)
+        sh   (* h (- (tensor/ones '(4 4)) h))
+        dz1  (* (tensor/mm dz2 (tensor/transpose w2 0 1)) sh)
+        dw1  (tensor/mm (tensor/transpose x 0 1) dz1))
+    (list (- w1 (/ dw1 lr)) (- w2 (/ dw2 lr)) loss)))
+
+;; -- Classification (cond) --------------------------------------
+
+(define (classify-loss loss)
+  (cond (< loss 0.01) "converged"
+        (< loss 0.1)  "learning"
+        true          "warming up"))
+
+;; -- Display ----------------------------------------------------
+
+(define (show-predictions label x w1 w2)
+  (let (out (tensor/flatten (car (cdr (forward x w1 w2)))))
+    (display (format "  %s\n" label))
+    (display (format "    [0,0] -> %.4f   (expect 0)\n" (ref out 0)))
+    (display (format "    [0,1] -> %.4f   (expect 1)\n" (ref out 1)))
+    (display (format "    [1,0] -> %.4f   (expect 1)\n" (ref out 2)))
+    (display (format "    [1,1] -> %.4f   (expect 0)\n" (ref out 3)))))
+
+;; ================================================================
+;;  Two demos — same training loop, different effect handlers
+;; ================================================================
+
+(define data (make-xor-data))
+(define X (car data))
+(define Y (car (cdr data)))
+
+(display "=== XOR Neural Network with Algebraic Effects ===\n")
+
+;; -- Demo 1: Verbose handler with early stopping -----------------
+;; Handler prints every checkpoint and resolves with true when
+;; the loss drops below threshold — the body uses this to stop.
+
+(display "\n-- Demo 1: verbose handler (early stop on convergence) --\n")
+
+(define r1
+  (handle
+    (let loop (ep 1 w1 (init-weights 2 4) w2 (init-weights 4 1))
+      (let (r    (train-step X Y w1 w2 3)
+            nw1  (ref r 0)
+            nw2  (ref r 1)
+            loss (ref r 2)
+            stop (if (= (% ep 500) 0)
+                   (signal eff (list ep loss))
+                   nil))
+        (if (or stop (>= ep 5000))
+          (list nw1 nw2)
+          (loop (+ ep 1) nw1 nw2))))
+    (eff info
+      (let (loss (car (cdr info)))
+        (display (format "  epoch %-5d  loss %.6f\n" (car info) loss))
+        (resolve (< loss 0.001))))))
+
+(show-predictions "Predictions:" X (car r1) (car (cdr r1)))
+
+;; -- Demo 2: Annotated handler -----------------------------------
+;; Same training loop, different handler — classifies loss status
+;; using cond + match, always trains to completion.
+
+(display "\n-- Demo 2: annotated handler (full 3000 epochs) --\n")
+
+(define r2
+  (handle
+    (let loop (ep 1 w1 (init-weights 2 4) w2 (init-weights 4 1))
+      (let (r    (train-step X Y w1 w2 3)
+            nw1  (ref r 0)
+            nw2  (ref r 1)
+            loss (ref r 2)
+            stop (if (= (% ep 500) 0)
+                   (signal eff (list ep loss))
+                   nil))
+        (if (or stop (>= ep 3000))
+          (list nw1 nw2)
+          (loop (+ ep 1) nw1 nw2))))
+    (eff info
+      (let (loss (car (cdr info))
+            status (classify-loss loss))
+        (match status
+          ("converged"  (display (format "  [%d] loss=%.4f  ** converged **\n"
+                                   (car info) loss)))
+          ("learning"   (display (format "  [%d] loss=%.4f  learning\n"
+                                   (car info) loss)))
+          ("warming up" (display (format "  [%d] loss=%.4f  warming up\n"
+                                   (car info) loss))))
+        (resolve nil)))))
+
+(show-predictions "Predictions:" X (car r2) (car (cdr r2)))
+
+(display "\n=== Done ===\n")

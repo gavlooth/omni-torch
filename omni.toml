@@ -1,0 +1,21 @@
+[project]
+name = "omni-torch"
+version = "0.1.0"
+description = "PyTorch CPU bindings for Omni Lisp"
+
+[build]
+output-dir = "build"
+safety = "safe"        # "safe", "fast", or "none"
+opt = "O0"             # "O0", "O1", "O2", "O3", "Os", "Oz"
+debug-info = "full"    # "full", "line-tables", "none"
+
+[dependencies.native]
+library = "torch_omni"
+build = "make"
+headers = ["csrc/torch_shim.h"]
+link-path = "build"
+requires = ["libtorch"]
+
+[dependencies.ffi.torch]
+library = "torch_omni"
+headers = ["csrc/torch_shim.h"]
