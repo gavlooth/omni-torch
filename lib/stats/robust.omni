@@ -1,0 +1,37 @@
+;; Robust statistics helpers.
+
+(module stats.robust
+  (export robust/median robust/median-dim
+          robust/quantile robust/quantile-dim
+          robust/interquartile-range robust/interquartile-range-dim
+          robust/median-absolute-deviation robust/median-absolute-deviation-dim)
+
+  (import "../torch.omni" :all)
+
+  (define (robust/_maybe-keepdim source dim keep-dim value)
+    (if keep-dim
+      (tensor/unsqueeze value (if (< dim 0) (+ dim source.ndim) dim))
+      value))
+
+  (define (robust/median t)
+    (tensor/median t))
+  (define (robust/median-dim t dim keep-dim)
+    (robust/_maybe-keepdim t dim keep-dim (tensor/median-dim t dim)))
+
+  (define (robust/quantile t q)
+    (tensor/quantile t q))
+  (define (robust/quantile-dim t q dim keep-dim)
+    (robust/_maybe-keepdim t dim keep-dim (tensor/quantile-dim t q dim)))
+
+  (define (robust/interquartile-range t)
+    (- (robust/quantile t 0.75) (robust/quantile t 0.25)))
+  (define (robust/interquartile-range-dim t dim keep-dim)
+    (robust/_maybe-keepdim t dim keep-dim
+      (- (tensor/quantile-dim t 0.75 dim) (tensor/quantile-dim t 0.25 dim))))
+
+  (define (robust/median-absolute-deviation t)
+    (tensor/median (tensor/abs (- (tensor/flatten t) (tensor/median (tensor/flatten t))))))
+  (define (robust/median-absolute-deviation-dim t dim keep-dim)
+    (robust/_maybe-keepdim t dim keep-dim
+      (tensor/median (tensor/abs (- t (tensor/median-dim t dim true))))))
+)

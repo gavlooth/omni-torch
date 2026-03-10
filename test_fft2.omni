@@ -1,0 +1,69 @@
+(import "lib/torch.omni" :all)
+(define u (tensor/randn '(1 4 8)))
+(define uh (omni-torch-fft-rfft u.handle 1))
+(println (format "dtype of rfft result: %d" (omni-torch-dtype uh)))
+(println (format "numel: %d" (omni-torch-numel uh)))
+(println (format "dim: %d" (omni-torch-dim uh)))
+
+;; Now wrap and try to use in a function
+(define (test-wrap h)
+  (_wrap h))
+
+(define w (test-wrap uh))
+(println "wrap in fn OK")
+
+;; Now try spectral-lap
+(define (slap u sl)
+  (let (uh (_wrap (omni-torch-fft-rfft u.handle 1)))
+    uh))
+
+(define r (slap u 4))
+(println "slap OK")
+
+;; More of spectral-lap
+(define (slap2 u sl)
+  (let (uh (_wrap (omni-torch-fft-rfft u.handle 1))
+        fr (_wrap (omni-torch-fft-fftfreq sl)))
+    fr))
+
+(define r2 (slap2 u 4))
+(println "slap2 OK")
+
+;; Full spectral-lap
+(define (slap3 u sl)
+  (let (uh (_wrap (omni-torch-fft-rfft u.handle 1))
+        fr (_wrap (omni-torch-fft-fftfreq sl))
+        k2 (tensor/neg (tensor/pow fr 2))
+        nf (+ (/ sl 2) 1)
+        kb (tensor/reshape k2 (list 1 nf 1)))
+    kb))
+
+(define r3 (slap3 u 4))
+(println "slap3 OK")
+
+;; With multiply
+(define (slap4 u sl)
+  (let (uh (_wrap (omni-torch-fft-rfft u.handle 1))
+        fr (_wrap (omni-torch-fft-fftfreq sl))
+        k2 (tensor/neg (tensor/pow fr 2))
+        nf (+ (/ sl 2) 1)
+        kb (tensor/reshape k2 (list 1 nf 1))
+        sc (_wrap (omni-torch-mul uh.handle kb.handle)))
+    sc))
+
+(define r4 (slap4 u 4))
+(println "slap4 OK")
+
+;; With irfft
+(define (slap5 u sl)
+  (let (uh (_wrap (omni-torch-fft-rfft u.handle 1))
+        fr (_wrap (omni-torch-fft-fftfreq sl))
+        k2 (tensor/neg (tensor/pow fr 2))
+        nf (+ (/ sl 2) 1)
+        kb (tensor/reshape k2 (list 1 nf 1))
+        sc (_wrap (omni-torch-mul uh.handle kb.handle))
+        r  (_wrap (omni-torch-fft-irfft sc.handle sl 1)))
+    r))
+
+(define r5 (slap5 u 4))
+(println "FULL spectral-lap in fn OK")

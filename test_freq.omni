@@ -1,0 +1,8 @@
+(import "lib/torch.omni" :all)
+(define fr (_wrap (omni-torch-fft-fftfreq 4)))
+(println (format "fftfreq dtype: %d ndim: %d numel: %d" fr.dtype fr.ndim fr.numel))
+(tensor/print fr)
+(define k2 (tensor/pow fr 2))
+(println "pow OK")
+(define k2n (tensor/neg k2))
+(println "neg OK")

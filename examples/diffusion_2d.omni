@@ -1,0 +1,298 @@
+;; DDPM (Denoising Diffusion Probabilistic Model) on 2D Swiss Roll
+;;
+;; A diffusion model that:
+;;   1. Learns the distribution of 2D Swiss Roll points
+;;   2. Generates new points from pure noise by iterative denoising
+;;   3. Uses algebraic effects for training monitoring + sampling visualization
+;;
+;; This demonstrates mixed int/double FFI (libffi), manual backprop through
+;; a 3-layer MLP, and the same effect-handler pattern from the XOR demo.
+;;
+;; Run:  make diffusion
+
+(import "../lib/torch.omni" :all)
+
+;; ================================================================
+;;  Constants
+;; ================================================================
+
+(define T 20)             ;; diffusion timesteps
+(define N 32)             ;; dataset size
+(define LR 0.01)          ;; learning rate
+(define EPOCHS 2000)      ;; training epochs
+(define EMBED-DIM 16)     ;; sinusoidal embedding dimension (8 freqs * 2)
+(define H-DIM 64)         ;; hidden layer width
+(define IN-DIM 18)        ;; 2 (x,y) + 16 (time embed)
+(define LOG-EVERY 200)    ;; signal every N epochs
+(define LN2 0.6931471805599453)
+
+;; ================================================================
+;;  Swiss Roll Data
+;; ================================================================
+
+(define (make-swiss-roll n)
+  ;; Generate n points on a 2D Swiss Roll spiral, normalized to [-1, 1]
+  ;; t in [1.5*pi, 4.5*pi], x = t*cos(t), y = t*sin(t)
+  (let (raw   (tensor/linspace n)                          ;; [0..1], shape (n,)
+        scale (- (* raw 3.0) 0.5)                         ;; [-0.5..2.5] * pi
+        t     (* scale pi)                                ;; [−0.5π..2.5π] — nah
+        ;; Actually: we want t in [1.5π, 4.5π]
+        ;; linspace gives [0..1], scale to range: 0→1.5π, 1→4.5π
+        ;; t = 1.5π + raw * 3π
+        t     (+ (* raw (* 3.0 pi)) (* 1.5 pi))
+        x-raw (* (tensor/cos t) t)                        ;; t * cos(t)
+        y-raw (* (tensor/sin t) t)                        ;; t * sin(t)
+        ;; Normalize by max(|t|) ≈ 4.5π ≈ 14.14
+        norm  (* 4.5 pi)
+        x-n   (/ x-raw norm)
+        y-n   (/ y-raw norm)
+        ;; Stack into (n, 2)
+        col-x (tensor/unsqueeze x-n 1)
+        col-y (tensor/unsqueeze y-n 1)
+        data  (tensor/cat col-x col-y 1))
+    ;; Add small noise for realism
+    (+ data (* (tensor/randn (list n 2)) 0.05))))
+
+;; ================================================================
+;;  Noise Schedule
+;; ================================================================
+
+;; Precompute beta, alpha, alpha_bar as Omni lists of doubles
+;; (indexed by timestep 0..T-1)
+
+(define (make-schedule num-steps beta-start beta-end)
+  (let loop (t 0 betas '() alphas '() abars '() prod 1.0)
+    (if (= t num-steps)
+      (list (reverse betas) (reverse alphas) (reverse abars))
+      (let (beta (+ beta-start (* (/ (* 1.0 t) (- num-steps 1)) (- beta-end beta-start)))
+            alpha (- 1.0 beta)
+            abar (* prod alpha))
+        (loop (+ t 1)
+              (cons beta betas)
+              (cons alpha alphas)
+              (cons abar abars)
+              abar)))))
+
+(define schedule (make-schedule T 0.0001 0.02))
+(define BETAS  (ref schedule 0))
+(define ALPHAS (ref schedule 1))
+(define ABARS  (ref schedule 2))
+
+;; ================================================================
+;;  Sinusoidal Time Embedding
+;; ================================================================
+
+;; 8 frequencies: 2^0, 2^1, ..., 2^7 = 1, 2, 4, ..., 128
+;; For timestep t, returns (1, 16) tensor: [sin(t*f0), cos(t*f0), ...]
+
+(define FREQS
+  ;; Build frequency tensor: exp(k * ln(2)) for k = 0..7
+  (let (k (tensor/to-dtype (tensor/arange 0 8 1) torch/float32))
+    (tensor/exp (* k LN2))))
+
+(define (time-embed t)
+  ;; t is integer timestep, returns (1, EMBED-DIM) tensor
+  (let (t-f    (* FREQS (+ 0.0 t))          ;; (8,) * scalar = (8,)
+        t-sin  (tensor/sin t-f)              ;; (8,)
+        t-cos  (tensor/cos t-f)              ;; (8,)
+        embed  (tensor/cat t-sin t-cos 0))   ;; (16,)
+    (tensor/reshape embed '(1 16))))
+
+(define (time-embed-batch t n)
+  ;; Expand (1, 16) time embedding to (n, 16) via broadcast add
+  (+ (tensor/zeros (list n EMBED-DIM)) (time-embed t)))
+
+;; ================================================================
+;;  Network (3-layer MLP)
+;; ================================================================
+
+;; Xavier-ish init: uniform in [-scale, scale] where scale = sqrt(6/(fan_in+fan_out))
+(define (init-weight rows cols)
+  (let (scale (sqrt (/ 6.0 (+ rows cols))))
+    (- (* (tensor/rand (list rows cols)) (* 2.0 scale)) scale)))
+
+(define (init-network)
+  ;; Returns: (W1 b1 W2 b2 W3 b3)
+  (list (init-weight IN-DIM H-DIM)             ;; W1: 18x64
+        (tensor/zeros (list H-DIM))             ;; b1: 64
+        (init-weight H-DIM H-DIM)               ;; W2: 64x64
+        (tensor/zeros (list H-DIM))             ;; b2: 64
+        (init-weight H-DIM 2)                    ;; W3: 64x2
+        (tensor/zeros '(2))))                    ;; b3: 2
+
+;; Forward pass: returns (eps_hat z1 h1 z2 h2)
+(define (net-forward input W1 b1 W2 b2 W3 b3)
+  (let (z1 (+ (tensor/mm input W1) b1)          ;; (N, 64) + (64,) broadcast
+        h1 (tensor/relu z1)                      ;; (N, 64)
+        z2 (+ (tensor/mm h1 W2) b2)             ;; (N, 64)
+        h2 (tensor/relu z2)                      ;; (N, 64)
+        z3 (+ (tensor/mm h2 W3) b3))            ;; (N, 2)
+    (list z3 z1 h1 z2 h2)))
+
+;; ReLU derivative mask: 1.0 where z > 0, else 0.0
+(define (relu-mask z)
+  (tensor/to-dtype (> z (tensor/zeros z.shape)) torch/float32))
+
+;; ================================================================
+;;  Training Step
+;; ================================================================
+
+(define (train-step x0 params)
+  ;; x0: (N, 2) original data
+  ;; params: (W1 b1 W2 b2 W3 b3)
+  ;; Returns: (new-params loss)
+  (let (W1 (ref params 0) b1 (ref params 1)
+        W2 (ref params 2) b2 (ref params 3)
+        W3 (ref params 4) b3 (ref params 5)
+        ;; Sample random timestep
+        t  (floor (* (tensor/item (tensor/rand '(1))) T))
+        t  (if (>= t T) (- T 1) t)
+        abar-t (ref ABARS t)
+        eps (tensor/randn (list N 2))
+        ;; Forward process
+        x-t (+ (* x0 (sqrt abar-t)) (* eps (sqrt (- 1.0 abar-t))))
+        input (tensor/cat x-t (time-embed-batch t N) 1)
+        ;; Forward pass
+        fwd     (net-forward input W1 b1 W2 b2 W3 b3)
+        eps-hat (ref fwd 0)
+        z1 (ref fwd 1) h1 (ref fwd 2) z2 (ref fwd 3) h2 (ref fwd 4)
+        ;; Loss
+        diff (- eps-hat eps)
+        loss (tensor/item (tensor/mean (tensor/pow diff 2))))
+    ;; Backward pass (nested let to stay under JIT 32-local limit)
+    ;; d(mean(diff^2))/d(eps_hat) = 2*diff / (N*2) since mean is over N*2 elements
+    (let (d-out (* diff (/ 1.0 N))
+          ;; Layer 3
+          dW3 (tensor/mm (tensor/transpose h2 0 1) d-out)
+          db3 (tensor/squeeze (tensor/sum-dim d-out 0))
+          ;; Layer 2
+          dz2 (* (tensor/mm d-out (tensor/transpose W3 0 1)) (relu-mask z2))
+          dW2 (tensor/mm (tensor/transpose h1 0 1) dz2)
+          db2 (tensor/squeeze (tensor/sum-dim dz2 0))
+          ;; Layer 1
+          dz1 (* (tensor/mm dz2 (tensor/transpose W2 0 1)) (relu-mask z1))
+          dW1 (tensor/mm (tensor/transpose input 0 1) dz1)
+          db1 (tensor/squeeze (tensor/sum-dim dz1 0)))
+      ;; SGD update
+      (list (list (- W1 (* dW1 LR)) (- b1 (* db1 LR))
+                  (- W2 (* dW2 LR)) (- b2 (* db2 LR))
+                  (- W3 (* dW3 LR)) (- b3 (* db3 LR)))
+            loss))))
+
+;; ================================================================
+;;  Sampling (Reverse Process)
+;; ================================================================
+
+(define (sample params num-points)
+  ;; Generate num-points new 2D points from noise
+  ;; Returns final (num-points, 2) tensor
+  (let (W1 (ref params 0) b1 (ref params 1)
+        W2 (ref params 2) b2 (ref params 3)
+        W3 (ref params 4) b3 (ref params 5))
+    ;; Start with pure noise
+    (let loop (t (- T 1) x-t (tensor/randn (list num-points 2)))
+      (if (< t 0) x-t
+        (let (;; Schedule values
+              beta-t  (ref BETAS t)
+              alpha-t (ref ALPHAS t)
+              abar-t  (ref ABARS t)
+
+              ;; Predict noise
+              t-emb   (time-embed-batch t num-points)
+              input   (tensor/cat x-t t-emb 1)
+              fwd     (net-forward input W1 b1 W2 b2 W3 b3)
+              eps-hat (ref fwd 0)
+
+              ;; Compute mean: (1/sqrt(alpha_t)) * (x_t - beta_t/sqrt(1-abar_t) * eps_hat)
+              coeff   (/ beta-t (sqrt (- 1.0 abar-t)))
+              mu      (* (- x-t (* eps-hat coeff)) (/ 1.0 (sqrt alpha-t)))
+
+              ;; Add noise (except at t=0)
+              x-next  (if (> t 0)
+                        (+ mu (* (tensor/randn (list num-points 2)) (sqrt beta-t)))
+                        mu))
+          ;; Signal sampling progress
+          (signal sample-step (list t x-next))
+          (loop (- t 1) x-next))))))
+
+;; ================================================================
+;;  Statistics helpers
+;; ================================================================
+
+(define (show-stats label pts)
+  ;; Show mean and std of generated points
+  (let (col-x (tensor/select pts 1 0)
+        col-y (tensor/select pts 1 1)
+        mean-x (tensor/item (tensor/mean col-x))
+        mean-y (tensor/item (tensor/mean col-y))
+        std    (tensor/item (tensor/mean (tensor/pow (- pts (tensor/mean pts)) 2))))
+    (display (format "  %s: mean=(%.3f, %.3f) var=%.3f\n" label mean-x mean-y std))))
+
+;; ================================================================
+;;  Main — Training + Sampling
+;; ================================================================
+
+(display "=== DDPM Diffusion Model on 2D Swiss Roll ===\n\n")
+
+;; Generate dataset
+(define X0 (make-swiss-roll N))
+(display (format "Dataset: %d Swiss Roll points\n" N))
+(display (format "Diffusion: T=%d timesteps, beta=[0.0001, 0.02]\n" T))
+(display (format "Network: %d -> %d -> %d -> 2 (ReLU)\n" IN-DIM H-DIM H-DIM))
+(display (format "Training: %d epochs, lr=%.4f\n\n" EPOCHS LR))
+
+;; -- Training with verbose effect handler --
+
+(display "-- Training (with effect-based progress) --\n")
+
+(define trained
+  (handle
+    (let loop (ep 1 params (init-network))
+      (let (result (train-step X0 params)
+            new-p  (ref result 0)
+            loss   (ref result 1)
+            stop   (if (= (% ep LOG-EVERY) 0)
+                     (signal train-progress (list ep loss))
+                     nil))
+        (if (or stop (>= ep EPOCHS))
+          new-p
+          (loop (+ ep 1) new-p))))
+    (train-progress info
+      (let (ep   (ref info 0)
+            loss (ref info 1))
+        (display (format "  epoch %-5d  loss %.6f%s\n"
+                   ep loss
+                   (cond (< loss 0.1) "  converging"
+                         (< loss 0.5) "  learning"
+                         true         "")))
+        (resolve (< loss 0.001))))))
+
+(display "\nTraining complete.\n\n")
+
+;; -- Sampling with progress handler --
+
+(display "-- Sampling 32 points (reverse diffusion) --\n")
+
+(define samples
+  (handle
+    (sample trained 32)
+    (sample-step info
+      (let (t (ref info 0))
+        (if (= (% t 25) 0)
+          (display (format "  t=%d denoising...\n" t))
+          nil)
+        (resolve nil)))))
+
+(show-stats "Generated" samples)
+
+;; Show a few sample points
+(display "\n  Sample points:\n")
+(let loop (i 0)
+  (if (>= i 8) nil
+    (begin
+      (let (row (ref samples i))
+        (display (format "    [%d] (%.3f, %.3f)\n"
+                   i (ref row 0) (ref row 1))))
+      (loop (+ i 1)))))
+
+(display "\n=== Done ===\n")

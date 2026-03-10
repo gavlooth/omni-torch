@@ -1,0 +1,37 @@
+(import "lib/torch.omni" :all)
+(define x (tensor/randn '(1 4 8)))
+(define w (* (tensor/randn '(8 8)) 0.02))
+
+;; Helper that returns a Tensor INSTANCE
+(define (wrap-matmul x w)
+  (tensor/matmul x w))
+
+;; Call helper from inside another function
+(define (outer x w)
+  (let (a (wrap-matmul x w))
+    a))
+
+(define r1 (outer x w))
+(println "nested call 1 OK")
+
+;; Two nested calls
+(define (outer2 x w)
+  (let (a (wrap-matmul x w)
+        b (wrap-matmul x w))
+    (+ a b)))
+
+(define r2 (outer2 x w))
+(println "nested call 2 OK")
+
+;; Three nested + transpose
+(define (outer3 x w)
+  (let (q (wrap-matmul x w)
+        k (wrap-matmul x w)
+        v (wrap-matmul x w)
+        kt (tensor/transpose k 1 2))
+    (tensor/matmul q (tensor/matmul kt v))))
+
+(define r3 (outer3 x w))
+(println "nested call 3 OK")
+
+(println "ALL NESTED CALLS PASSED")

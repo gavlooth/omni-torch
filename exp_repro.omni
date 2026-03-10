@@ -1,0 +1,5 @@
+(import "lib/torch.omni" :all)
+(define arange-t (tensor/arange 1 6 1))
+(define e (tensor/exp arange-t))
+(println e.ndim)
+(println e.numel)

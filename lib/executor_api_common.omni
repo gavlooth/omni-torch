@@ -1,0 +1,31 @@
+(module executor-api-common
+  (export executor/_append-1
+          executor/_bool->string
+          executor/_timeout-step
+          executor/_safe-sub
+          executor/_max
+          executor/_op-memory-bytes)
+
+  (define (executor/_append-1 xs item)
+    (append xs (list item)))
+
+  (define (executor/_bool->string b)
+    (if b "true" "false"))
+
+  (define (executor/_timeout-step ctx)
+    (let (interval ctx.timeout-check-interval-ms)
+      (if (= interval 0)
+        1
+        interval)))
+
+  (define (executor/_safe-sub a b)
+    (if (< a b)
+      0
+      (- a b)))
+
+  (define (executor/_max a b)
+    (if (> a b) a b))
+
+  (define (executor/_op-memory-bytes op-name)
+    (+ 128 (if op-name 0 0)))
+)

@@ -1,0 +1,14 @@
+(import "lib/torch.omni" :all)
+(define t (_wrap (omni-torch-randn-2d 3 4)))
+(println (format "t OK: ndim=%d dtype=%d" t.ndim t.dtype))
+
+;; Call _wrap-same manually
+(define h2 (omni-torch-mul-scalar-i t.handle 2))
+(println (format "h2=%d" h2))
+(define t2 (_wrap-same h2 t))
+(println (format "t2 OK: ndim=%d dtype=%d" t2.ndim t2.dtype))
+
+;; Now via dispatch
+(define t3 (* t 2))
+(println (format "t3 OK: ndim=%d" t3.ndim))
+(println "ALL OK")

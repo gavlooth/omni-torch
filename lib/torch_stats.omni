@@ -1,0 +1,212 @@
+(module torch-stats
+  (export stats/describe/count stats/describe/minimum stats/describe/maximum
+          stats/describe/mean stats/describe/mean-dim stats/describe/variance
+          stats/describe/variance-dim stats/describe/std stats/describe/std-dim
+          stats/describe/minimum-dim stats/describe/maximum-dim
+          stats/association/covariance stats/association/correlation
+          stats/association/covariance-dim stats/association/correlation-dim
+          stats/distribution/histogram stats/distribution/skewness stats/distribution/kurtosis
+          stats/distribution/skewness-dim stats/distribution/kurtosis-dim
+          stats/robust/median stats/robust/median-dim
+          stats/robust/quantile stats/robust/quantile-dim
+          stats/robust/interquartile-range stats/robust/interquartile-range-dim
+          stats/robust/median-absolute-deviation stats/robust/median-absolute-deviation-dim
+          stats/missing/count stats/missing/sum stats/missing/minimum stats/missing/maximum
+          stats/missing/count-dim stats/missing/sum-dim stats/missing/minimum-dim stats/missing/maximum-dim
+          stats/missing/mean stats/missing/mean-dim stats/missing/variance stats/missing/variance-dim
+          stats/missing/std stats/missing/std-dim)
+
+  (import "torch_core.omni" :all)
+
+  (define (stats/_normalize-dim t dim)
+    (let (axis (if (< dim 0) (+ dim t.ndim) dim))
+      (if (or (< axis 0) (>= axis t.ndim))
+        (error "stats/_normalize-dim requires dim in range [-ndim, ndim-1]")
+        axis)))
+
+  (define (stats/_as-accumulation-tensor t)
+    (if (= t.dtype torch/float64)
+      t
+      (tensor/to-dtype t torch/float64)))
+
+  (define (stats/_maybe-keepdim original dim keep-dim reduced)
+    (if keep-dim
+      (tensor/unsqueeze reduced (stats/_normalize-dim original dim))
+      reduced))
+
+  (define (stats/describe/count t)
+    t.numel)
+  (define (stats/describe/minimum t)
+    (tensor/min-val t))
+  (define (stats/describe/minimum-dim t dim keep-dim)
+    (stats/_maybe-keepdim t dim keep-dim (tensor/min-dim t dim)))
+  (define (stats/describe/maximum t)
+    (tensor/max-val t))
+  (define (stats/describe/maximum-dim t dim keep-dim)
+    (stats/_maybe-keepdim t dim keep-dim (tensor/max-dim t dim)))
+  (define (stats/describe/mean t)
+    (tensor/mean (tensor/flatten (stats/_as-accumulation-tensor t))))
+  (define (stats/describe/mean-dim t dim keep-dim)
+    (stats/_maybe-keepdim t dim keep-dim
+      (tensor/mean-dim (stats/_as-accumulation-tensor t)
+                       (stats/_normalize-dim t dim))))
+  (define (stats/describe/variance t)
+    (tensor/var-dim (tensor/flatten (stats/_as-accumulation-tensor t)) 0))
+  (define (stats/describe/variance-dim t dim keep-dim)
+    (stats/_maybe-keepdim t dim keep-dim
+      (tensor/var-dim (stats/_as-accumulation-tensor t)
+                      (stats/_normalize-dim t dim))))
+  (define (stats/describe/std t)
+    (sqrt (stats/describe/variance t)))
+  (define (stats/describe/std-dim t dim keep-dim)
+    (sqrt (stats/describe/variance-dim t dim keep-dim)))
+  (define (stats/association/covariance a b)
+    (tensor/covariance a b))
+  (define (stats/association/correlation a b)
+    (tensor/correlation a b))
+  (define (stats/association/_normalize-dim a b dim)
+    (if (<> a.ndim b.ndim)
+      (error "association/covariance-dim requires matching rank")
+      (let (axis (stats/_normalize-dim a dim))
+        (if (<> (ref a.shape axis) (ref b.shape axis))
+          (error "association/covariance-dim requires matching dimension sizes")
+          axis))))
+  (define (stats/association/covariance-dim a b dim keep-dim)
+    (let (axis (stats/association/_normalize-dim a b dim))
+      (if (< (ref a.shape axis) 2)
+        (error "association/covariance-dim requires at least 2 elements on dim")
+        (let (a64 (stats/_as-accumulation-tensor a)
+              b64 (stats/_as-accumulation-tensor b)
+              da (- a64 (tensor/mean-dim a64 axis true))
+              db (- b64 (tensor/mean-dim b64 axis true)))
+          (stats/_maybe-keepdim a axis keep-dim
+            (/ (tensor/sum-dim (tensor/mul da db) axis)
+               (- (ref a.shape axis) 1)))))))
+  (define (stats/association/correlation-dim a b dim keep-dim)
+    (let (axis (stats/association/_normalize-dim a b dim))
+      (if (< (ref a.shape axis) 2)
+        (error "association/correlation-dim requires at least 2 elements on dim")
+        (let (a64 (stats/_as-accumulation-tensor a)
+              b64 (stats/_as-accumulation-tensor b)
+              da (- a64 (tensor/mean-dim a64 axis true))
+              db (- b64 (tensor/mean-dim b64 axis true))
+              num (tensor/sum-dim (tensor/mul da db) axis)
+              den (sqrt (tensor/mul (tensor/std-dim a64 axis)
+                                   (tensor/std-dim b64 axis))))
+          (stats/_maybe-keepdim a axis keep-dim (/ num den)))))
+  (define (stats/distribution/histogram t bins min max)
+    (tensor/histogram t bins min max))
+  (define (stats/distribution/skewness t)
+    (let (x (tensor/flatten (stats/_as-accumulation-tensor t))
+          mu (tensor/mean (tensor/flatten (stats/_as-accumulation-tensor t))))
+      (let (centered (- x mu)
+            sigma2 (tensor/mean (tensor/pow centered 2))
+            sigma3 (tensor/pow (sqrt sigma2) 3))
+        (/ (tensor/mean (tensor/pow centered 3)) sigma3))))
+  (define (stats/distribution/kurtosis t)
+    (let (x (tensor/flatten (stats/_as-accumulation-tensor t))
+          sigma2 (tensor/mean (tensor/pow (- x (tensor/mean x)) 2))
+          kurt (tensor/mean (tensor/pow (- x (tensor/mean x)) 4)))
+      (- (/ kurt (tensor/pow sigma2 2)) 3)))
+  (define (stats/distribution/skewness-dim t dim keep-dim)
+    (let (axis (stats/_normalize-dim t dim)
+          tx (stats/_as-accumulation-tensor t)
+          centered (- tx (tensor/mean-dim tx axis true)))
+      (stats/_maybe-keepdim t dim keep-dim
+        (/ (tensor/mean-dim (tensor/pow centered 3) axis)
+           (tensor/pow (sqrt (tensor/mean-dim (tensor/pow centered 2) axis)) 3)))))
+  (define (stats/distribution/kurtosis-dim t dim keep-dim)
+    (let (axis (stats/_normalize-dim t dim)
+          tx (stats/_as-accumulation-tensor t)
+          centered (- tx (tensor/mean-dim tx axis true))
+          m2 (tensor/mean-dim (tensor/pow centered 2) axis)
+          m4 (tensor/mean-dim (tensor/pow centered 4) axis))
+      (stats/_maybe-keepdim t dim keep-dim (- (/ m4 (tensor/pow m2 2)) 3))))
+  (define (stats/robust/median t)
+    (tensor/median t))
+  (define (stats/robust/median-dim t dim keep-dim)
+    (stats/_maybe-keepdim t dim keep-dim (tensor/median-dim t dim)))
+  (define (stats/robust/quantile t q)
+    (tensor/quantile t q))
+  (define (stats/robust/quantile-dim t q dim keep-dim)
+    (stats/_maybe-keepdim t dim keep-dim (tensor/quantile-dim t q dim)))
+  (define (stats/robust/interquartile-range t)
+    (- (stats/robust/quantile t 0.75) (stats/robust/quantile t 0.25)))
+  (define (stats/robust/interquartile-range-dim t dim keep-dim)
+    (stats/_maybe-keepdim t dim keep-dim
+      (- (tensor/quantile-dim t 0.75 dim)
+         (tensor/quantile-dim t 0.25 dim))))
+  (define (stats/robust/median-absolute-deviation t)
+    (stats/robust/median (tensor/abs (- (tensor/flatten t) (stats/robust/median (tensor/flatten t))))))
+  (define (stats/robust/median-absolute-deviation-dim t dim keep-dim)
+    (stats/_maybe-keepdim t dim keep-dim
+      (tensor/median (tensor/abs (- t (tensor/median-dim t dim true))))))
+
+  (define (stats/missing/count t)
+    (tensor/item-int (tensor/sum (tensor/is-finite t))))
+  (define (stats/missing/count-dim t dim keep-dim)
+    (stats/_maybe-keepdim t dim keep-dim (tensor/sum-dim (tensor/is-finite t) dim)))
+  (define (stats/missing/_replace-missing-with value nan-replace posinf-replace neginf-replace)
+    (let (x (tensor/clone (stats/_as-accumulation-tensor value)))
+      (tensor/fill-missing-inplace x nan-replace posinf-replace neginf-replace)
+      x))
+  (define (stats/missing/_mean-dim value dim)
+    (/ (tensor/sum-dim (stats/missing/_replace-missing-with value 0.0 0.0 0.0) dim)
+       (tensor/sum-dim (tensor/is-finite value) dim)))
+
+  (define (stats/missing/sum t)
+    (let (x (tensor/clone (stats/_as-accumulation-tensor t)))
+      (tensor/fill-missing-inplace x 0.0 0.0 0.0)
+      (tensor/sum x)))
+  (define (stats/missing/sum-dim t dim keep-dim)
+    (stats/_maybe-keepdim t dim keep-dim
+      (tensor/sum-dim (stats/missing/_replace-missing-with t 0.0 0.0 0.0) dim)))
+
+  (define (stats/missing/minimum t)
+    (let (x (tensor/clone (stats/_as-accumulation-tensor t))
+          inf (/ 1.0 0.0))
+      (tensor/fill-missing-inplace x inf inf inf)
+      (tensor/min-val x)))
+  (define (stats/missing/minimum-dim t dim keep-dim)
+    (stats/_maybe-keepdim t dim keep-dim
+      (tensor/min-dim (stats/missing/_replace-missing-with t (/ 1.0 0.0) (/ 1.0 0.0) (/ 1.0 0.0))
+                      dim)))
+
+  (define (stats/missing/maximum t)
+    (let (x (tensor/clone (stats/_as-accumulation-tensor t))
+          neg-inf (- (/ 1.0 0.0)))
+      (tensor/fill-missing-inplace x neg-inf neg-inf neg-inf)
+      (tensor/max-val x)))
+  (define (stats/missing/maximum-dim t dim keep-dim)
+    (stats/_maybe-keepdim t dim keep-dim
+      (tensor/max-dim (stats/missing/_replace-missing-with t (- (/ 1.0 0.0)) (- (/ 1.0 0.0)) (- (/ 1.0 0.0)))
+                      dim)))
+
+  (define (stats/missing/mean t)
+    (let (finite (stats/missing/count t)
+          x (tensor/clone (stats/_as-accumulation-tensor t)))
+      (tensor/fill-missing-inplace x 0.0 0.0 0.0)
+      (/ (tensor/sum x) finite)))
+  (define (stats/missing/mean-dim t dim keep-dim)
+    (stats/_maybe-keepdim t dim keep-dim
+      (/ (tensor/sum-dim (stats/missing/_replace-missing-with t 0.0 0.0 0.0) dim)
+         (tensor/sum-dim (tensor/is-finite t) dim))))
+
+  (define (stats/missing/variance t)
+    (let (finite (stats/missing/count t)
+          x (tensor/clone (stats/_as-accumulation-tensor t))
+          m (stats/missing/mean t))
+      (tensor/fill-missing-inplace x 0.0 0.0 0.0)
+      (/ (tensor/sum (tensor/pow (- x m) 2)) finite)))
+  (define (stats/missing/variance-dim t dim keep-dim)
+    (stats/_maybe-keepdim t dim keep-dim
+      (/ (tensor/sum-dim (tensor/pow (- (stats/missing/_replace-missing-with t 0.0 0.0 0.0)
+                                        (stats/missing/_mean-dim t dim))
+                               2)
+                         dim)
+         (tensor/sum-dim (tensor/is-finite t) dim))))
+
+  (define (stats/missing/std t)
+    (sqrt (stats/missing/variance t)))
+  (define (stats/missing/std-dim t dim keep-dim)
+    (sqrt (stats/missing/variance-dim t dim keep-dim))))

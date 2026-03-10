@@ -1,0 +1,17 @@
+(import "lib/torch.omni" :all)
+(define t (_wrap (omni-torch-randn-2d 3 4)))
+(println (format "ndim=%d" t.ndim))
+(println (format "numel=%d" t.numel))
+(println (format "dtype=%d" t.dtype))
+(println (format "handle=%d" t.handle))
+(println (format "shape len=%d" (length t.shape)))
+(println "field access OK")
+
+;; Now access fields on t from inside a function
+(define (get-ndim t) t.ndim)
+(println (format "fn ndim=%d" (get-ndim t)))
+
+(define (get-shape t) t.shape)
+(define sh (get-shape t))
+(println (format "fn shape len=%d" (length sh)))
+(println "ALL OK")

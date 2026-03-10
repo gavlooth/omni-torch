@@ -1,0 +1,36 @@
+(define (executor/blocking-step? op)
+  op.blocking)
+
+(define (executor/_op-description op)
+  (format "op=%s kind=%s inputs=%s args=%s"
+          op.name
+          op.kind
+          op.inputs
+          op.args))
+
+(define (executor/blocking-step ctx step-name)
+  (executor/context-check-blocking-state
+    (executor/context-append-diagnostic
+      (executor/context-tick ctx)
+      "trace"
+      (string-append "blocking-step: " step-name)
+      "executor")))
+
+(define (executor/op-run ctx op)
+  (let (pre-step (executor/blocking-step ctx (string-append "start:" op.name)))
+    (let (ctx-started (executor/context-append-op-diagnostic
+                        pre-step
+                        "trace"
+                        (executor/_op-description op)
+                        "executor"
+                        0))
+      (let (started (executor/context-start-op
+                       ctx-started
+                       op.name))
+        (let (op-id (car started)
+              running (cadr started))
+          (executor/context-finish-op
+            (executor/blocking-step running (string-append "run:" op.name))
+            op-id
+            op.name
+            "ok"))))))

@@ -1,260 +1,284 @@
-;; Auto-generated FFI bindings for libtorch_omni
-;; Regenerate with: omni --bind
-
-(module ffi-torch (export omni-torch-last-error omni-torch-zeros-1d omni-torch-zeros-2d omni-torch-zeros-3d omni-torch-ones-1d omni-torch-ones-2d omni-torch-ones-3d omni-torch-rand-1d omni-torch-rand-2d omni-torch-full-1d omni-torch-full-2d omni-torch-arange omni-torch-linspace omni-torch-eye omni-torch-from-blob-f32 omni-torch-from-blob-f64 omni-torch-full-scalar-1d omni-torch-dim omni-torch-numel omni-torch-shape omni-torch-dtype omni-torch-is-contiguous omni-torch-data-ptr omni-torch-item-f64 omni-torch-item-i64 omni-torch-get-1d-f64 omni-torch-get-2d-f64 omni-torch-get-1d-i64 omni-torch-get-2d-i64 omni-torch-add omni-torch-sub omni-torch-mul omni-torch-div omni-torch-neg omni-torch-abs omni-torch-add-scalar-i omni-torch-sub-scalar-i omni-torch-mul-scalar-i omni-torch-div-scalar-i omni-torch-matmul omni-torch-mm omni-torch-mv omni-torch-dot omni-torch-transpose omni-torch-sum omni-torch-mean omni-torch-min omni-torch-max omni-torch-sum-dim omni-torch-mean-dim omni-torch-reshape-1d omni-torch-reshape-2d omni-torch-reshape-3d omni-torch-squeeze omni-torch-unsqueeze omni-torch-flatten omni-torch-cat-2 omni-torch-stack-2 omni-torch-select omni-torch-slice omni-torch-index-select omni-torch-clone omni-torch-contiguous omni-torch-to-dtype omni-torch-exp omni-torch-log omni-torch-sqrt omni-torch-pow-scalar omni-torch-sin omni-torch-cos omni-torch-tanh omni-torch-sigmoid omni-torch-eq omni-torch-lt omni-torch-gt omni-torch-le omni-torch-ge omni-torch-relu omni-torch-softmax omni-torch-log-softmax omni-torch-fill-i64 omni-torch-free omni-torch-print omni-torch-to-string)
-
-  (define _lib (ffi-open "libtorch_omni.so"))
-
-  (define (omni-torch-last-error)
-    (ffi-call _lib "omni_torch_last_error" 'string))
-
-  (define (omni-torch-zeros-1d (^Int arg0) (^Int arg1))
-    (ffi-call _lib "omni_torch_zeros_1d" 'int arg0 'int arg1 'int))
-
-  (define (omni-torch-zeros-2d (^Int arg0) (^Int arg1) (^Int arg2))
-    (ffi-call _lib "omni_torch_zeros_2d" 'int arg0 'int arg1 'int arg2 'int))
-
-  (define (omni-torch-zeros-3d (^Int arg0) (^Int arg1) (^Int arg2) (^Int arg3))
-    (ffi-call _lib "omni_torch_zeros_3d" 'int arg0 'int arg1 'int arg2 'int arg3 'int))
-
-  (define (omni-torch-ones-1d (^Int arg0) (^Int arg1))
-    (ffi-call _lib "omni_torch_ones_1d" 'int arg0 'int arg1 'int))
-
-  (define (omni-torch-ones-2d (^Int arg0) (^Int arg1) (^Int arg2))
-    (ffi-call _lib "omni_torch_ones_2d" 'int arg0 'int arg1 'int arg2 'int))
-
-  (define (omni-torch-ones-3d (^Int arg0) (^Int arg1) (^Int arg2) (^Int arg3))
-    (ffi-call _lib "omni_torch_ones_3d" 'int arg0 'int arg1 'int arg2 'int arg3 'int))
-
-  (define (omni-torch-rand-1d (^Int arg0))
-    (ffi-call _lib "omni_torch_rand_1d" 'int arg0 'int))
-
-  (define (omni-torch-rand-2d (^Int arg0) (^Int arg1))
-    (ffi-call _lib "omni_torch_rand_2d" 'int arg0 'int arg1 'int))
-
-  (define (omni-torch-full-1d (^Int arg0) (^Int arg1))
-    (ffi-call _lib "omni_torch_full_1d" 'int arg0 'int arg1 'int))
-
-  (define (omni-torch-full-2d (^Int arg0) (^Int arg1) (^Int arg2))
-    (ffi-call _lib "omni_torch_full_2d" 'int arg0 'int arg1 'int arg2 'int))
-
-  (define (omni-torch-arange (^Int arg0) (^Int arg1) (^Int arg2))
-    (ffi-call _lib "omni_torch_arange" 'int arg0 'int arg1 'int arg2 'int))
-
-  (define (omni-torch-linspace (^Int arg0))
-    (ffi-call _lib "omni_torch_linspace" 'int arg0 'int))
-
-  (define (omni-torch-eye (^Int arg0))
-    (ffi-call _lib "omni_torch_eye" 'int arg0 'int))
-
-  (define (omni-torch-from-blob-f32 (^Int arg0) (^Int arg1))
-    (ffi-call _lib "omni_torch_from_blob_f32" 'int arg0 'int arg1 'int))
-
-  (define (omni-torch-from-blob-f64 (^Int arg0) (^Int arg1))
-    (ffi-call _lib "omni_torch_from_blob_f64" 'int arg0 'int arg1 'int))
-
-  (define (omni-torch-full-scalar-1d (^Int arg0) (^Int arg1))
-    (ffi-call _lib "omni_torch_full_scalar_1d" 'int arg0 'int arg1 'int))
-
-  (define (omni-torch-dim (^Int arg0))
-    (ffi-call _lib "omni_torch_dim" 'int arg0 'int))
-
-  (define (omni-torch-numel (^Int arg0))
-    (ffi-call _lib "omni_torch_numel" 'int arg0 'int))
-
-  (define (omni-torch-shape (^Int arg0) (^Int arg1))
-    (ffi-call _lib "omni_torch_shape" 'int arg0 'int arg1 'int))
-
-  (define (omni-torch-dtype (^Int arg0))
-    (ffi-call _lib "omni_torch_dtype" 'int arg0 'int))
-
-  (define (omni-torch-is-contiguous (^Int arg0))
-    (ffi-call _lib "omni_torch_is_contiguous" 'int arg0 'int))
-
-  (define (omni-torch-data-ptr (^Int arg0))
-    (ffi-call _lib "omni_torch_data_ptr" 'int arg0 'int))
-
-  (define (omni-torch-item-f64 (^Int arg0))
-    (ffi-call _lib "omni_torch_item_f64" 'double arg0 'int))
-
-  (define (omni-torch-item-i64 (^Int arg0))
-    (ffi-call _lib "omni_torch_item_i64" 'int arg0 'int))
-
-  (define (omni-torch-get-1d-f64 (^Int arg0) (^Int arg1))
-    (ffi-call _lib "omni_torch_get_1d_f64" 'double arg0 'int arg1 'int))
-
-  (define (omni-torch-get-2d-f64 (^Int arg0) (^Int arg1) (^Int arg2))
-    (ffi-call _lib "omni_torch_get_2d_f64" 'double arg0 'int arg1 'int arg2 'int))
-
-  (define (omni-torch-get-1d-i64 (^Int arg0) (^Int arg1))
-    (ffi-call _lib "omni_torch_get_1d_i64" 'int arg0 'int arg1 'int))
-
-  (define (omni-torch-get-2d-i64 (^Int arg0) (^Int arg1) (^Int arg2))
-    (ffi-call _lib "omni_torch_get_2d_i64" 'int arg0 'int arg1 'int arg2 'int))
-
-  (define (omni-torch-add (^Int arg0) (^Int arg1))
-    (ffi-call _lib "omni_torch_add" 'int arg0 'int arg1 'int))
-
-  (define (omni-torch-sub (^Int arg0) (^Int arg1))
-    (ffi-call _lib "omni_torch_sub" 'int arg0 'int arg1 'int))
-
-  (define (omni-torch-mul (^Int arg0) (^Int arg1))
-    (ffi-call _lib "omni_torch_mul" 'int arg0 'int arg1 'int))
-
-  (define (omni-torch-div (^Int arg0) (^Int arg1))
-    (ffi-call _lib "omni_torch_div" 'int arg0 'int arg1 'int))
-
-  (define (omni-torch-neg (^Int arg0))
-    (ffi-call _lib "omni_torch_neg" 'int arg0 'int))
-
-  (define (omni-torch-abs (^Int arg0))
-    (ffi-call _lib "omni_torch_abs" 'int arg0 'int))
-
-  (define (omni-torch-add-scalar-i (^Int arg0) (^Int arg1))
-    (ffi-call _lib "omni_torch_add_scalar_i" 'int arg0 'int arg1 'int))
-
-  (define (omni-torch-sub-scalar-i (^Int arg0) (^Int arg1))
-    (ffi-call _lib "omni_torch_sub_scalar_i" 'int arg0 'int arg1 'int))
-
-  (define (omni-torch-mul-scalar-i (^Int arg0) (^Int arg1))
-    (ffi-call _lib "omni_torch_mul_scalar_i" 'int arg0 'int arg1 'int))
-
-  (define (omni-torch-div-scalar-i (^Int arg0) (^Int arg1))
-    (ffi-call _lib "omni_torch_div_scalar_i" 'int arg0 'int arg1 'int))
-
-  (define (omni-torch-matmul (^Int arg0) (^Int arg1))
-    (ffi-call _lib "omni_torch_matmul" 'int arg0 'int arg1 'int))
-
-  (define (omni-torch-mm (^Int arg0) (^Int arg1))
-    (ffi-call _lib "omni_torch_mm" 'int arg0 'int arg1 'int))
-
-  (define (omni-torch-mv (^Int arg0) (^Int arg1))
-    (ffi-call _lib "omni_torch_mv" 'int arg0 'int arg1 'int))
-
-  (define (omni-torch-dot (^Int arg0) (^Int arg1))
-    (ffi-call _lib "omni_torch_dot" 'int arg0 'int arg1 'int))
-
-  (define (omni-torch-transpose (^Int arg0) (^Int arg1) (^Int arg2))
-    (ffi-call _lib "omni_torch_transpose" 'int arg0 'int arg1 'int arg2 'int))
-
-  (define (omni-torch-sum (^Int arg0))
-    (ffi-call _lib "omni_torch_sum" 'int arg0 'int))
-
-  (define (omni-torch-mean (^Int arg0))
-    (ffi-call _lib "omni_torch_mean" 'int arg0 'int))
-
-  (define (omni-torch-min (^Int arg0))
-    (ffi-call _lib "omni_torch_min" 'int arg0 'int))
-
-  (define (omni-torch-max (^Int arg0))
-    (ffi-call _lib "omni_torch_max" 'int arg0 'int))
-
-  (define (omni-torch-sum-dim (^Int arg0) (^Int arg1))
-    (ffi-call _lib "omni_torch_sum_dim" 'int arg0 'int arg1 'int))
-
-  (define (omni-torch-mean-dim (^Int arg0) (^Int arg1))
-    (ffi-call _lib "omni_torch_mean_dim" 'int arg0 'int arg1 'int))
-
-  (define (omni-torch-reshape-1d (^Int arg0) (^Int arg1))
-    (ffi-call _lib "omni_torch_reshape_1d" 'int arg0 'int arg1 'int))
-
-  (define (omni-torch-reshape-2d (^Int arg0) (^Int arg1) (^Int arg2))
-    (ffi-call _lib "omni_torch_reshape_2d" 'int arg0 'int arg1 'int arg2 'int))
-
-  (define (omni-torch-reshape-3d (^Int arg0) (^Int arg1) (^Int arg2) (^Int arg3))
-    (ffi-call _lib "omni_torch_reshape_3d" 'int arg0 'int arg1 'int arg2 'int arg3 'int))
-
-  (define (omni-torch-squeeze (^Int arg0))
-    (ffi-call _lib "omni_torch_squeeze" 'int arg0 'int))
-
-  (define (omni-torch-unsqueeze (^Int arg0) (^Int arg1))
-    (ffi-call _lib "omni_torch_unsqueeze" 'int arg0 'int arg1 'int))
-
-  (define (omni-torch-flatten (^Int arg0))
-    (ffi-call _lib "omni_torch_flatten" 'int arg0 'int))
-
-  (define (omni-torch-cat-2 (^Int arg0) (^Int arg1) (^Int arg2))
-    (ffi-call _lib "omni_torch_cat_2" 'int arg0 'int arg1 'int arg2 'int))
-
-  (define (omni-torch-stack-2 (^Int arg0) (^Int arg1) (^Int arg2))
-    (ffi-call _lib "omni_torch_stack_2" 'int arg0 'int arg1 'int arg2 'int))
-
-  (define (omni-torch-select (^Int arg0) (^Int arg1) (^Int arg2))
-    (ffi-call _lib "omni_torch_select" 'int arg0 'int arg1 'int arg2 'int))
-
-  (define (omni-torch-slice (^Int arg0) (^Int arg1) (^Int arg2) (^Int arg3))
-    (ffi-call _lib "omni_torch_slice" 'int arg0 'int arg1 'int arg2 'int arg3 'int))
-
-  (define (omni-torch-index-select (^Int arg0) (^Int arg1) (^Int arg2))
-    (ffi-call _lib "omni_torch_index_select" 'int arg0 'int arg1 'int arg2 'int))
-
-  (define (omni-torch-clone (^Int arg0))
-    (ffi-call _lib "omni_torch_clone" 'int arg0 'int))
-
-  (define (omni-torch-contiguous (^Int arg0))
-    (ffi-call _lib "omni_torch_contiguous" 'int arg0 'int))
-
-  (define (omni-torch-to-dtype (^Int arg0) (^Int arg1))
-    (ffi-call _lib "omni_torch_to_dtype" 'int arg0 'int arg1 'int))
-
-  (define (omni-torch-exp (^Int arg0))
-    (ffi-call _lib "omni_torch_exp" 'int arg0 'int))
-
-  (define (omni-torch-log (^Int arg0))
-    (ffi-call _lib "omni_torch_log" 'int arg0 'int))
-
-  (define (omni-torch-sqrt (^Int arg0))
-    (ffi-call _lib "omni_torch_sqrt" 'int arg0 'int))
-
-  (define (omni-torch-pow-scalar (^Int arg0) (^Int arg1))
-    (ffi-call _lib "omni_torch_pow_scalar" 'int arg0 'int arg1 'int))
-
-  (define (omni-torch-sin (^Int arg0))
-    (ffi-call _lib "omni_torch_sin" 'int arg0 'int))
-
-  (define (omni-torch-cos (^Int arg0))
-    (ffi-call _lib "omni_torch_cos" 'int arg0 'int))
-
-  (define (omni-torch-tanh (^Int arg0))
-    (ffi-call _lib "omni_torch_tanh" 'int arg0 'int))
-
-  (define (omni-torch-sigmoid (^Int arg0))
-    (ffi-call _lib "omni_torch_sigmoid" 'int arg0 'int))
-
-  (define (omni-torch-eq (^Int arg0) (^Int arg1))
-    (ffi-call _lib "omni_torch_eq" 'int arg0 'int arg1 'int))
-
-  (define (omni-torch-lt (^Int arg0) (^Int arg1))
-    (ffi-call _lib "omni_torch_lt" 'int arg0 'int arg1 'int))
-
-  (define (omni-torch-gt (^Int arg0) (^Int arg1))
-    (ffi-call _lib "omni_torch_gt" 'int arg0 'int arg1 'int))
-
-  (define (omni-torch-le (^Int arg0) (^Int arg1))
-    (ffi-call _lib "omni_torch_le" 'int arg0 'int arg1 'int))
-
-  (define (omni-torch-ge (^Int arg0) (^Int arg1))
-    (ffi-call _lib "omni_torch_ge" 'int arg0 'int arg1 'int))
-
-  (define (omni-torch-relu (^Int arg0))
-    (ffi-call _lib "omni_torch_relu" 'int arg0 'int))
-
-  (define (omni-torch-softmax (^Int arg0) (^Int arg1))
-    (ffi-call _lib "omni_torch_softmax" 'int arg0 'int arg1 'int))
-
-  (define (omni-torch-log-softmax (^Int arg0) (^Int arg1))
-    (ffi-call _lib "omni_torch_log_softmax" 'int arg0 'int arg1 'int))
-
-  (define (omni-torch-fill-i64 (^Int arg0) (^Int arg1))
-    (ffi-call _lib "omni_torch_fill_i64" 'void arg0 'int arg1 'int))
-
-  (define (omni-torch-free (^Int arg0))
-    (ffi-call _lib "omni_torch_free" 'void arg0 'int))
-
-  (define (omni-torch-print (^Int arg0))
-    (ffi-call _lib "omni_torch_print" 'void arg0 'int))
-
-  (define (omni-torch-to-string (^Int arg0) (^Int arg1) (^Int arg2))
-    (ffi-call _lib "omni_torch_to_string" 'int arg0 'int arg1 'int arg2 'int))
+;; FFI bindings for libtorch_omni — new declarative syntax
+;; Uses (define [ffi lib]) and (define [ffi lambda]) backed by libffi
+
+(module ffi-torch
+  (export omni-torch-last-error
+          omni-torch-get-num-threads
+          omni-torch-set-memory-limit-bytes
+          omni-torch-get-memory-limit-bytes
+          omni-torch-get-memory-allocated-bytes
+          omni-torch-get-memory-peak-bytes
+          omni-torch-zeros-1d omni-torch-zeros-2d omni-torch-zeros-3d
+          omni-torch-ones-1d omni-torch-ones-2d omni-torch-ones-3d
+          omni-torch-rand-1d omni-torch-rand-2d
+          omni-torch-randn-1d omni-torch-randn-2d
+          omni-torch-arange omni-torch-linspace omni-torch-eye
+          omni-torch-from-blob-f32 omni-torch-from-blob-f64
+          omni-torch-dim omni-torch-numel omni-torch-shape omni-torch-dtype
+          omni-torch-is-contiguous omni-torch-data-ptr
+          omni-torch-item-f64 omni-torch-item-i64
+          omni-torch-get-1d-f64 omni-torch-get-2d-f64
+          omni-torch-get-1d-i64 omni-torch-get-2d-i64
+          omni-torch-add omni-torch-sub omni-torch-mul omni-torch-div
+          omni-torch-neg omni-torch-abs
+          omni-torch-add-scalar-i omni-torch-sub-scalar-i
+          omni-torch-mul-scalar-i omni-torch-div-scalar-i
+          omni-torch-add-scalar-f omni-torch-sub-scalar-f
+          omni-torch-mul-scalar-f omni-torch-div-scalar-f
+          omni-torch-matmul omni-torch-mm omni-torch-mv omni-torch-dot
+          omni-torch-transpose
+          omni-torch-sum omni-torch-mean omni-torch-min omni-torch-max
+          omni-torch-sum-dim omni-torch-mean-dim
+          omni-torch-min-dim omni-torch-max-dim
+          omni-torch-reshape-1d omni-torch-reshape-2d omni-torch-reshape-3d
+          omni-torch-squeeze omni-torch-unsqueeze omni-torch-flatten
+          omni-torch-cat-2 omni-torch-stack-2
+          omni-torch-select omni-torch-slice omni-torch-index-select
+          omni-torch-clone omni-torch-contiguous omni-torch-to-dtype
+          omni-torch-exp omni-torch-log omni-torch-sqrt
+          omni-torch-pow-scalar omni-torch-pow-scalar-f
+          omni-torch-sin omni-torch-cos omni-torch-tanh omni-torch-sigmoid
+          omni-torch-clamp
+          omni-torch-eq omni-torch-lt omni-torch-gt omni-torch-le omni-torch-ge
+          omni-torch-is-not-a-number omni-torch-is-infinite omni-torch-is-finite
+          omni-torch-nan-to-num
+          omni-torch-median
+          omni-torch-median-dim
+          omni-torch-quantile
+          omni-torch-quantile-dim
+          omni-torch-covariance
+          omni-torch-correlation
+          omni-torch-histogram
+          omni-torch-unique-values-with-counts
+          omni-torch-count-distinct
+          omni-torch-relu omni-torch-softmax omni-torch-log-softmax
+          omni-torch-fill-i64 omni-torch-free
+          omni-torch-print omni-torch-to-string
+          ;; New ops
+          omni-torch-rand-3d omni-torch-randn-3d
+          omni-torch-fft-rfft omni-torch-fft-irfft omni-torch-fft-fftfreq
+          omni-torch-zeros-like omni-torch-ones-like omni-torch-randn-like omni-torch-full-like
+          omni-torch-zeros-4d omni-torch-randn-4d omni-torch-reshape-4d
+          omni-torch-softplus omni-torch-silu omni-torch-gelu omni-torch-floor omni-torch-ceil
+          omni-torch-bmm omni-torch-cumsum
+          omni-torch-permute-3d omni-torch-permute-4d
+          omni-torch-expand-as omni-torch-repeat-4d
+          omni-torch-where omni-torch-argmax omni-torch-argmin
+          omni-torch-embedding
+          omni-torch-var-dim omni-torch-std-dim
+          omni-torch-add-inplace omni-torch-mul-inplace omni-torch-fill-f64
+          omni-torch-clamp-inplace omni-torch-fill-missing-inplace omni-torch-set-num-threads
+          omni-torch-layer-norm omni-torch-rms-norm
+          omni-torch-conv1d
+          omni-torch-dropout)
+
+  (define [ffi lib] _lib "libtorch_omni.so")
+
+  ;; === Error Handling ===
+  (define [ffi lambda _lib] (omni-torch-last-error) ^String)
+  (define [ffi lambda _lib] (omni-torch-get-num-threads) ^Int)
+  (define [ffi lambda _lib] (omni-torch-set-memory-limit-bytes (^Int bytes)))
+  (define [ffi lambda _lib] (omni-torch-get-memory-limit-bytes) ^Int)
+  (define [ffi lambda _lib] (omni-torch-get-memory-allocated-bytes) ^Int)
+  (define [ffi lambda _lib] (omni-torch-get-memory-peak-bytes) ^Int)
+
+  ;; === Tensor Creation ===
+  (define [ffi lambda _lib] (omni-torch-zeros-1d (^Int d0) (^Int dtype)) ^Int)
+  (define [ffi lambda _lib] (omni-torch-zeros-2d (^Int d0) (^Int d1) (^Int dtype)) ^Int)
+  (define [ffi lambda _lib] (omni-torch-zeros-3d (^Int d0) (^Int d1) (^Int d2) (^Int dtype)) ^Int)
+  (define [ffi lambda _lib] (omni-torch-ones-1d (^Int d0) (^Int dtype)) ^Int)
+  (define [ffi lambda _lib] (omni-torch-ones-2d (^Int d0) (^Int d1) (^Int dtype)) ^Int)
+  (define [ffi lambda _lib] (omni-torch-ones-3d (^Int d0) (^Int d1) (^Int d2) (^Int dtype)) ^Int)
+  (define [ffi lambda _lib] (omni-torch-rand-1d (^Int d0)) ^Int)
+  (define [ffi lambda _lib] (omni-torch-rand-2d (^Int d0) (^Int d1)) ^Int)
+  (define [ffi lambda _lib] (omni-torch-randn-1d (^Int d0)) ^Int)
+  (define [ffi lambda _lib] (omni-torch-randn-2d (^Int d0) (^Int d1)) ^Int)
+  (define [ffi lambda _lib] (omni-torch-arange (^Int start) (^Int end) (^Int step)) ^Int)
+  (define [ffi lambda _lib] (omni-torch-linspace (^Int n)) ^Int)
+  (define [ffi lambda _lib] (omni-torch-eye (^Int n)) ^Int)
+  (define [ffi lambda _lib] (omni-torch-from-blob-f32 (^Int data-ptr) (^Int numel)) ^Int)
+  (define [ffi lambda _lib] (omni-torch-from-blob-f64 (^Int data-ptr) (^Int numel)) ^Int)
+  ;; === Tensor Info ===
+  (define [ffi lambda _lib] (omni-torch-dim (^Int t)) ^Int)
+  (define [ffi lambda _lib] (omni-torch-numel (^Int t)) ^Int)
+  (define [ffi lambda _lib] (omni-torch-shape (^Int t) (^Int dim-idx)) ^Int)
+  (define [ffi lambda _lib] (omni-torch-dtype (^Int t)) ^Int)
+  (define [ffi lambda _lib] (omni-torch-is-contiguous (^Int t)) ^Int)
+  (define [ffi lambda _lib] (omni-torch-data-ptr (^Int t)) ^Int)
+
+  ;; === Missing / Special numeric masks ===
+  (define [ffi lambda _lib] (omni-torch-is-not-a-number (^Int t)) ^Int)
+  (define [ffi lambda _lib] (omni-torch-is-infinite (^Int t)) ^Int)
+  (define [ffi lambda _lib] (omni-torch-is-finite (^Int t)) ^Int)
+  (define [ffi lambda _lib] (omni-torch-nan-to-num (^Int t) (^Double nan) (^Double posinf) (^Double neginf)) ^Int)
+  (define [ffi lambda _lib] (omni-torch-median (^Int t)) ^Int)
+  (define [ffi lambda _lib] (omni-torch-median-dim (^Int t) (^Int dim)) ^Int)
+  (define [ffi lambda _lib] (omni-torch-quantile (^Int t) (^Double q)) ^Int)
+  (define [ffi lambda _lib] (omni-torch-quantile-dim (^Int t) (^Double q) (^Int dim)) ^Int)
+  (define [ffi lambda _lib] (omni-torch-covariance (^Int a) (^Int b)) ^Int)
+  (define [ffi lambda _lib] (omni-torch-correlation (^Int a) (^Int b)) ^Int)
+  (define [ffi lambda _lib] (omni-torch-histogram (^Int t) (^Int bins) (^Double min) (^Double max)) ^Int)
+  (define [ffi lambda _lib] (omni-torch-unique-values-with-counts (^Int t)) ^Int)
+  (define [ffi lambda _lib] (omni-torch-count-distinct (^Int t)) ^Int)
+
+  ;; === Element Access ===
+  (define [ffi lambda _lib] (omni-torch-item-f64 (^Int t)) ^Double)
+  (define [ffi lambda _lib] (omni-torch-item-i64 (^Int t)) ^Int)
+  (define [ffi lambda _lib] (omni-torch-get-1d-f64 (^Int t) (^Int i)) ^Double)
+  (define [ffi lambda _lib] (omni-torch-get-2d-f64 (^Int t) (^Int i) (^Int j)) ^Double)
+  (define [ffi lambda _lib] (omni-torch-get-1d-i64 (^Int t) (^Int i)) ^Int)
+  (define [ffi lambda _lib] (omni-torch-get-2d-i64 (^Int t) (^Int i) (^Int j)) ^Int)
+
+  ;; === Arithmetic (tensor, tensor -> tensor) ===
+  (define [ffi lambda _lib] (omni-torch-add (^Int a) (^Int b)) ^Int)
+  (define [ffi lambda _lib] (omni-torch-sub (^Int a) (^Int b)) ^Int)
+  (define [ffi lambda _lib] (omni-torch-mul (^Int a) (^Int b)) ^Int)
+  (define [ffi lambda _lib] (omni-torch-div (^Int a) (^Int b)) ^Int)
+  (define [ffi lambda _lib] (omni-torch-neg (^Int a)) ^Int)
+  (define [ffi lambda _lib] (omni-torch-abs (^Int a)) ^Int)
+
+  ;; Scalar arithmetic: tensor op int -> tensor
+  (define [ffi lambda _lib] (omni-torch-add-scalar-i (^Int a) (^Int s)) ^Int)
+  (define [ffi lambda _lib] (omni-torch-sub-scalar-i (^Int a) (^Int s)) ^Int)
+  (define [ffi lambda _lib] (omni-torch-mul-scalar-i (^Int a) (^Int s)) ^Int)
+  (define [ffi lambda _lib] (omni-torch-div-scalar-i (^Int a) (^Int s)) ^Int)
+
+  ;; Scalar arithmetic: tensor op double -> tensor (mixed types via libffi)
+  (define [ffi lambda _lib] (omni-torch-add-scalar-f (^Int a) (^Double s)) ^Int)
+  (define [ffi lambda _lib] (omni-torch-sub-scalar-f (^Int a) (^Double s)) ^Int)
+  (define [ffi lambda _lib] (omni-torch-mul-scalar-f (^Int a) (^Double s)) ^Int)
+  (define [ffi lambda _lib] (omni-torch-div-scalar-f (^Int a) (^Double s)) ^Int)
+
+  ;; === Linear Algebra ===
+  (define [ffi lambda _lib] (omni-torch-matmul (^Int a) (^Int b)) ^Int)
+  (define [ffi lambda _lib] (omni-torch-mm (^Int a) (^Int b)) ^Int)
+  (define [ffi lambda _lib] (omni-torch-mv (^Int a) (^Int b)) ^Int)
+  (define [ffi lambda _lib] (omni-torch-dot (^Int a) (^Int b)) ^Int)
+  (define [ffi lambda _lib] (omni-torch-transpose (^Int a) (^Int d0) (^Int d1)) ^Int)
+
+  ;; === Reductions ===
+  (define [ffi lambda _lib] (omni-torch-sum (^Int a)) ^Int)
+  (define [ffi lambda _lib] (omni-torch-mean (^Int a)) ^Int)
+  (define [ffi lambda _lib] (omni-torch-min (^Int a)) ^Int)
+  (define [ffi lambda _lib] (omni-torch-max (^Int a)) ^Int)
+  (define [ffi lambda _lib] (omni-torch-sum-dim (^Int a) (^Int dim)) ^Int)
+  (define [ffi lambda _lib] (omni-torch-mean-dim (^Int a) (^Int dim)) ^Int)
+  (define [ffi lambda _lib] (omni-torch-min-dim (^Int a) (^Int dim) ) ^Int)
+  (define [ffi lambda _lib] (omni-torch-max-dim (^Int a) (^Int dim) ) ^Int)
+
+  ;; === Shape Operations ===
+  (define [ffi lambda _lib] (omni-torch-reshape-1d (^Int a) (^Int d0)) ^Int)
+  (define [ffi lambda _lib] (omni-torch-reshape-2d (^Int a) (^Int d0) (^Int d1)) ^Int)
+  (define [ffi lambda _lib] (omni-torch-reshape-3d (^Int a) (^Int d0) (^Int d1) (^Int d2)) ^Int)
+  (define [ffi lambda _lib] (omni-torch-squeeze (^Int a)) ^Int)
+  (define [ffi lambda _lib] (omni-torch-unsqueeze (^Int a) (^Int dim)) ^Int)
+  (define [ffi lambda _lib] (omni-torch-flatten (^Int a)) ^Int)
+  (define [ffi lambda _lib] (omni-torch-cat-2 (^Int a) (^Int b) (^Int dim)) ^Int)
+  (define [ffi lambda _lib] (omni-torch-stack-2 (^Int a) (^Int b) (^Int dim)) ^Int)
+  (define [ffi lambda _lib] (omni-torch-select (^Int a) (^Int dim) (^Int index)) ^Int)
+  (define [ffi lambda _lib] (omni-torch-slice (^Int a) (^Int dim) (^Int start) (^Int end)) ^Int)
+  (define [ffi lambda _lib] (omni-torch-index-select (^Int a) (^Int dim) (^Int idx)) ^Int)
+  (define [ffi lambda _lib] (omni-torch-clone (^Int a)) ^Int)
+  (define [ffi lambda _lib] (omni-torch-contiguous (^Int a)) ^Int)
+  (define [ffi lambda _lib] (omni-torch-to-dtype (^Int a) (^Int dtype)) ^Int)
+
+  ;; === Math ===
+  (define [ffi lambda _lib] (omni-torch-exp (^Int a)) ^Int)
+  (define [ffi lambda _lib] (omni-torch-log (^Int a)) ^Int)
+  (define [ffi lambda _lib] (omni-torch-sqrt (^Int a)) ^Int)
+  (define [ffi lambda _lib] (omni-torch-pow-scalar (^Int a) (^Int exp)) ^Int)
+  (define [ffi lambda _lib] (omni-torch-pow-scalar-f (^Int a) (^Double exp)) ^Int)
+  (define [ffi lambda _lib] (omni-torch-sin (^Int a)) ^Int)
+  (define [ffi lambda _lib] (omni-torch-cos (^Int a)) ^Int)
+  (define [ffi lambda _lib] (omni-torch-tanh (^Int a)) ^Int)
+  (define [ffi lambda _lib] (omni-torch-sigmoid (^Int a)) ^Int)
+  (define [ffi lambda _lib] (omni-torch-clamp (^Int a) (^Double min-val) (^Double max-val)) ^Int)
+
+  ;; === Comparison ===
+  (define [ffi lambda _lib] (omni-torch-eq (^Int a) (^Int b)) ^Int)
+  (define [ffi lambda _lib] (omni-torch-lt (^Int a) (^Int b)) ^Int)
+  (define [ffi lambda _lib] (omni-torch-gt (^Int a) (^Int b)) ^Int)
+  (define [ffi lambda _lib] (omni-torch-le (^Int a) (^Int b)) ^Int)
+  (define [ffi lambda _lib] (omni-torch-ge (^Int a) (^Int b)) ^Int)
+
+  ;; === NN Layers ===
+  (define [ffi lambda _lib] (omni-torch-relu (^Int a)) ^Int)
+  (define [ffi lambda _lib] (omni-torch-softmax (^Int a) (^Int dim)) ^Int)
+  (define [ffi lambda _lib] (omni-torch-log-softmax (^Int a) (^Int dim)) ^Int)
+
+  ;; === In-Place Fill ===
+  (define [ffi lambda _lib] (omni-torch-fill-i64 (^Int a) (^Int val)))
+
+  ;; === Memory ===
+  (define [ffi lambda _lib] (omni-torch-free (^Int t)))
+
+  ;; === Display ===
+  (define [ffi lambda _lib] (omni-torch-print (^Int t)))
+  (define [ffi lambda _lib] (omni-torch-to-string (^Int t) (^Int buf-ptr) (^Int buf-len)) ^Int)
+
+  ;; === 3D random ===
+  (define [ffi lambda _lib] (omni-torch-rand-3d (^Int d0) (^Int d1) (^Int d2)) ^Int)
+  (define [ffi lambda _lib] (omni-torch-randn-3d (^Int d0) (^Int d1) (^Int d2)) ^Int)
+
+  ;; === FFT (Wave-PDE spectral Laplacian) ===
+  (define [ffi lambda _lib] (omni-torch-fft-rfft (^Int t) (^Int dim)) ^Int)
+  (define [ffi lambda _lib] (omni-torch-fft-irfft (^Int t) (^Int n) (^Int dim)) ^Int)
+  (define [ffi lambda _lib] (omni-torch-fft-fftfreq (^Int n)) ^Int)
+
+  ;; === Like-constructors ===
+  (define [ffi lambda _lib] (omni-torch-zeros-like (^Int t)) ^Int)
+  (define [ffi lambda _lib] (omni-torch-ones-like (^Int t)) ^Int)
+  (define [ffi lambda _lib] (omni-torch-randn-like (^Int t)) ^Int)
+  (define [ffi lambda _lib] (omni-torch-full-like (^Int t) (^Double val)) ^Int)
+
+  ;; === 4D tensor support ===
+  (define [ffi lambda _lib] (omni-torch-zeros-4d (^Int d0) (^Int d1) (^Int d2) (^Int d3) (^Int dtype)) ^Int)
+  (define [ffi lambda _lib] (omni-torch-randn-4d (^Int d0) (^Int d1) (^Int d2) (^Int d3)) ^Int)
+  (define [ffi lambda _lib] (omni-torch-reshape-4d (^Int a) (^Int d0) (^Int d1) (^Int d2) (^Int d3)) ^Int)
+
+  ;; === Additional math ===
+  (define [ffi lambda _lib] (omni-torch-softplus (^Int t)) ^Int)
+  (define [ffi lambda _lib] (omni-torch-silu (^Int t)) ^Int)
+  (define [ffi lambda _lib] (omni-torch-gelu (^Int t)) ^Int)
+  (define [ffi lambda _lib] (omni-torch-floor (^Int t)) ^Int)
+  (define [ffi lambda _lib] (omni-torch-ceil (^Int t)) ^Int)
+
+  ;; === Batch / advanced ops ===
+  (define [ffi lambda _lib] (omni-torch-bmm (^Int a) (^Int b)) ^Int)
+  (define [ffi lambda _lib] (omni-torch-cumsum (^Int t) (^Int dim)) ^Int)
+  (define [ffi lambda _lib] (omni-torch-permute-3d (^Int t) (^Int d0) (^Int d1) (^Int d2)) ^Int)
+  (define [ffi lambda _lib] (omni-torch-permute-4d (^Int t) (^Int d0) (^Int d1) (^Int d2) (^Int d3)) ^Int)
+  (define [ffi lambda _lib] (omni-torch-expand-as (^Int t) (^Int other)) ^Int)
+  (define [ffi lambda _lib] (omni-torch-repeat-4d (^Int t) (^Int r0) (^Int r1) (^Int r2) (^Int r3)) ^Int)
+
+  ;; === Conditional / indexing ===
+  (define [ffi lambda _lib] (omni-torch-where (^Int cond) (^Int a) (^Int b)) ^Int)
+  (define [ffi lambda _lib] (omni-torch-argmax (^Int t) (^Int dim)) ^Int)
+  (define [ffi lambda _lib] (omni-torch-argmin (^Int t) (^Int dim)) ^Int)
+
+  ;; === Embedding ===
+  (define [ffi lambda _lib] (omni-torch-embedding (^Int weight) (^Int indices)) ^Int)
+
+  ;; === Variance / std ===
+  (define [ffi lambda _lib] (omni-torch-var-dim (^Int t) (^Int dim)) ^Int)
+  (define [ffi lambda _lib] (omni-torch-std-dim (^Int t) (^Int dim)) ^Int)
+
+  ;; === In-place ===
+  (define [ffi lambda _lib] (omni-torch-add-inplace (^Int a) (^Int b)))
+  (define [ffi lambda _lib] (omni-torch-mul-inplace (^Int a) (^Int b)))
+  (define [ffi lambda _lib] (omni-torch-fill-f64 (^Int t) (^Double val)))
+  (define [ffi lambda _lib] (omni-torch-clamp-inplace (^Int t) (^Double min) (^Double max)))
+  (define [ffi lambda _lib] (omni-torch-fill-missing-inplace (^Int t) (^Double nan) (^Double posinf) (^Double neginf)))
+  (define [ffi lambda _lib] (omni-torch-set-num-threads (^Int threads)))
+
+  ;; === Norm ===
+  (define [ffi lambda _lib] (omni-torch-layer-norm (^Int t) (^Int dim)) ^Int)
+  (define [ffi lambda _lib] (omni-torch-rms-norm (^Int t) (^Int dim)) ^Int)
+
+  ;; === Conv1d ===
+  (define [ffi lambda _lib] (omni-torch-conv1d (^Int input) (^Int weight) (^Int bias) (^Int stride) (^Int padding)) ^Int)
+
+  ;; === Dropout ===
+  (define [ffi lambda _lib] (omni-torch-dropout (^Int t) (^Double p) (^Int training)) ^Int)
 
 )

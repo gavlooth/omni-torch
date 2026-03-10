@@ -1,0 +1,4 @@
+(import "lib/torch.omni" :all)
+(define arange-t (tensor/arange 1 6 1))
+(define m (tensor/mean arange-t))
+(println m.ndim)

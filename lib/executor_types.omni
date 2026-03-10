@@ -1,0 +1,79 @@
+(module executor-types
+  (export ExecutionContext
+          ExecutionReport
+          Diagnostic
+          OpTiming
+          OpMemory
+          OpEvent
+          Operator
+          Plan)
+
+  (define [type] ExecutionContext
+    (^Int max-threads)
+    (^Int memory-limit-bytes)
+    (^Int timeout-ms)
+    (^Int timeout-check-interval-ms)
+    (^Int cancelled)
+    (^Int timeout-elapsed-ms)
+    (^Int heartbeat)
+    (^Int next-op-id)
+    (^Int memory-usage-bytes)
+    (^Int peak-memory-bytes)
+    (^List op-events)
+    (^List diagnostics)
+    (^List op-timings)
+    (^List op-memories))
+
+  (define [type] ExecutionReport
+    (^Int heartbeat)
+    (^Int timeout-elapsed-ms)
+    (^Int timeout-ms)
+    (^Int timeout-check-interval-ms)
+    (^Int op-count)
+    (^Int diagnostic-count)
+    (^Int cancelled)
+    (^Int next-op-id)
+    (^Int memory-usage-bytes)
+    (^Int peak-memory-bytes)
+    (^List op-memories)
+    (^List op-events)
+    (^List diagnostics)
+    (^List op-timings))
+
+  (define [type] Diagnostic
+    (^String severity)
+    (^String message)
+    (^String source)
+    (^Int op-id))
+
+  (define [type] OpTiming
+    (^Int op-id)
+    (^Int elapsed-heartbeat)
+    (^String op-name))
+
+  (define [type] OpMemory
+    (^Int op-id)
+    (^Int memory-bytes)
+    (^Int memory-before)
+    (^Int memory-after)
+    (^String op-name))
+
+  (define [type] OpEvent
+    (^Int op-id)
+    (^String op-name)
+    (^String phase)
+    (^String status)
+    (^Int blocking))
+
+  (define [type] Operator
+    (^Int id)
+    (^String kind)
+    (^String name)
+    (^List inputs)
+    (^List args)
+    (^Int blocking))
+
+  (define [type] Plan
+    (^Int next-op-id)
+    (^List operators))
+)

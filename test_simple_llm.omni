@@ -1,0 +1,24 @@
+(import "lib/torch.omni" :all)
+(println "=== Simple Test ===")
+
+;; Create a few 2D tensors (works)
+(define wq (tensor/randn '(16 16)))
+(define wk (tensor/randn '(16 16)))
+(println "2D tensors OK")
+
+;; Create 3D tensor
+(define cr (tensor/randn '(1 1 16)))
+(println "3D tensor OK")
+
+;; Test softplus
+(define sp (tensor/softplus cr))
+(println "softplus OK")
+
+;; Test FFT
+(define x (tensor/randn '(1 8 16)))
+(println "input OK")
+
+(define x-hat (_wrap (omni-torch-fft-rfft x.handle 1)))
+(println "rfft OK")
+
+(println "ALL DONE")

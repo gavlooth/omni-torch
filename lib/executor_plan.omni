@@ -1,0 +1,50 @@
+(module executor-plan
+  (export executor/operator
+          executor/operator-scan
+          executor/operator-filter
+          executor/op-scan
+          executor/op-filter
+          executor/plan-new
+          executor/plan-op-count
+          executor/plan-add-op
+          executor/plan-add-scan
+          executor/plan-add-filter)
+  (import "executor_types.omni")
+  (import executor-types :all)
+
+  (define (executor/_append-1 xs item)
+    (append xs (list item)))
+
+  (define (executor/operator op-id kind name inputs args blocking)
+    (Operator op-id kind name inputs args blocking))
+
+  (define (executor/operator-scan op-id relation projection)
+    (executor/operator op-id "scan" "scan" (list relation) (list projection) 1))
+
+  (define (executor/operator-filter op-id relation predicate)
+    (executor/operator op-id "filter" "filter" (list relation) (list predicate) 1))
+
+  (define (executor/op-scan op-id relation projection)
+    (executor/operator-scan op-id relation projection))
+
+  (define (executor/op-filter op-id relation predicate)
+    (executor/operator-filter op-id relation predicate))
+
+  (define (executor/plan-new)
+    (Plan 1 '()))
+
+  (define (executor/plan-op-count plan)
+    (length plan.operators))
+
+  (define (executor/plan-add-op plan op)
+    (let (op-id (if (= op.id 0) plan.next-op-id op.id))
+      (let (normalized (Operator op-id op.kind op.name op.inputs op.args op.blocking))
+        (Plan (+ op-id 1)
+              (executor/_append-1 plan.operators normalized)))))
+
+  (define (executor/plan-add-scan plan relation projection)
+    (executor/plan-add-op plan (executor/operator-scan 0 relation projection)))
+
+  (define (executor/plan-add-filter plan relation predicate)
+    (executor/plan-add-op plan (executor/operator-filter 0 relation predicate)))
+)

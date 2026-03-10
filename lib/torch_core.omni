@@ -1,0 +1,512 @@
+(module torch-core
+  (export Tensor
+          torch/float32 torch/float64 torch/int32 torch/int64
+          tensor/zeros tensor/ones tensor/rand tensor/arange
+          tensor/linspace tensor/eye tensor/randn
+          tensor/neg tensor/matmul tensor/mm tensor/mv tensor/dot tensor/transpose
+          tensor/sum tensor/mean tensor/min-val tensor/max-val
+          tensor/sum-dim tensor/mean-dim tensor/min-dim tensor/max-dim
+          tensor/reshape tensor/flatten tensor/squeeze tensor/unsqueeze
+          tensor/cat tensor/stack tensor/slice tensor/clone tensor/to-dtype
+          tensor/exp tensor/log tensor/pow tensor/powf tensor/sin tensor/cos
+          tensor/tanh tensor/sigmoid tensor/relu tensor/softmax tensor/log-softmax
+          tensor/item tensor/item-int tensor/free tensor/print tensor/free-all
+          tensor/clamp tensor/select tensor? tensor/contiguous? tensor/contiguous tensor/ensure-contiguous
+          tensor/zeros-like tensor/ones-like tensor/randn-like
+          tensor/softplus tensor/silu tensor/gelu tensor/bmm tensor/cumsum
+          tensor/rms-norm tensor/layer-norm tensor/embedding tensor/where
+          tensor/median tensor/median-dim tensor/quantile tensor/quantile-dim
+          tensor/covariance tensor/correlation tensor/histogram tensor/unique-values-with-counts tensor/count-distinct
+          tensor/clamp-inplace tensor/fill-missing-inplace tensor/set-num-threads tensor/get-num-threads
+          tensor/set-memory-limit-bytes tensor/memory-report tensor/var-dim tensor/std-dim
+          tensor/argmax tensor/argmin tensor/dropout tensor/permute
+          tensor/is-not-a-number tensor/is-infinite tensor/is-finite tensor/nan-to-number
+          stats/describe/count stats/describe/minimum stats/describe/maximum
+          stats/describe/mean stats/describe/mean-dim stats/describe/variance
+          stats/describe/variance-dim stats/describe/std stats/describe/std-dim
+          stats/describe/minimum-dim stats/describe/maximum-dim
+          stats/association/covariance stats/association/correlation
+          stats/association/covariance-dim stats/association/correlation-dim
+          stats/distribution/histogram stats/distribution/skewness stats/distribution/kurtosis
+          stats/distribution/skewness-dim stats/distribution/kurtosis-dim
+          stats/robust/median stats/robust/median-dim
+          stats/robust/quantile stats/robust/quantile-dim
+          stats/robust/interquartile-range stats/robust/interquartile-range-dim
+          stats/robust/median-absolute-deviation stats/robust/median-absolute-deviation-dim
+          stats/missing/count stats/missing/sum stats/missing/minimum stats/missing/maximum
+          stats/missing/count-dim stats/missing/sum-dim stats/missing/minimum-dim stats/missing/maximum-dim
+          stats/missing/mean stats/missing/mean-dim stats/missing/variance stats/missing/variance-dim
+          stats/missing/std stats/missing/std-dim
+          _wrap _wrap-same)
+
+  (import "ffi/torch.omni" :all)
+
+  (define torch/float32 6)
+  (define torch/float64 7)
+  (define torch/int32 3)
+  (define torch/int64 4)
+
+  (define [type] Tensor
+    (^Int handle)
+    (^List shape)
+    (^Int ndim)
+    (^Int numel)
+    (^Int dtype))
+
+  (define (_query-shape h nd)
+    (let loop (i 0 acc '())
+      (if (= i nd) (reverse acc)
+        (loop (+ i 1) (cons (omni-torch-shape h i) acc)))))
+
+  (define (torch/_backend-error op)
+    (let (detail (omni-torch-last-error))
+      (if detail
+        (format "torch backend error in %s: %s" op detail)
+        (format "torch backend error in %s" op))))
+
+  (define (torch/_wrap-op h op)
+    (if (= h 0)
+      (error (torch/_backend-error op))
+      (let (nd (omni-torch-dim h)
+            nu (omni-torch-numel h)
+            dt (omni-torch-dtype h))
+        (Tensor h (_query-shape h nd) nd nu dt))))
+
+  (define (torch/_wrap-op-same h op src)
+    (if (= h 0)
+      (error (torch/_backend-error op))
+      (Tensor h src.shape src.ndim src.numel src.dtype)))
+
+  (define (torch/_ensure-void-ok op)
+    (let (detail (omni-torch-last-error))
+      (if detail
+        (error (torch/_backend-error op))
+        true)))
+
+  (define (_wrap h)
+    (torch/_wrap-op h "tensor"))
+
+  (define (_wrap-same h src)
+    (torch/_wrap-op-same h "tensor" src))
+
+  (define (stats/_normalize-dim t dim)
+    (let (axis (if (< dim 0) (+ dim t.ndim) dim))
+      (if (or (< axis 0) (>= axis t.ndim))
+        (error "stats/_normalize-dim requires dim in range [-ndim, ndim-1]")
+        axis)))
+
+  (define (stats/_as-accumulation-tensor t)
+    (if (= t.dtype torch/float64)
+      t
+      (tensor/to-dtype t torch/float64)))
+
+  (define (stats/_maybe-keepdim original dim keep-dim reduced)
+    (if keep-dim
+      (tensor/unsqueeze reduced (stats/_normalize-dim original dim))
+      reduced))
+
+  (define (_zeros-raw shape dtype)
+    (let (n (length shape))
+      (cond
+        (= n 1) (omni-torch-zeros-1d (car shape) dtype)
+        (= n 2) (omni-torch-zeros-2d (car shape) (ref shape 1) dtype)
+        (= n 3) (omni-torch-zeros-3d (car shape) (ref shape 1) (ref shape 2) dtype))))
+
+  (define (_ones-raw shape dtype)
+    (let (n (length shape))
+      (cond
+        (= n 1) (omni-torch-ones-1d (car shape) dtype)
+        (= n 2) (omni-torch-ones-2d (car shape) (ref shape 1) dtype)
+        (= n 3) (omni-torch-ones-3d (car shape) (ref shape 1) (ref shape 2) dtype))))
+
+  (define (_rand-raw shape)
+    (let (n (length shape))
+      (cond
+        (= n 1) (omni-torch-rand-1d (car shape))
+        (= n 2) (omni-torch-rand-2d (car shape) (ref shape 1))
+        (= n 3) (omni-torch-rand-3d (car shape) (ref shape 1) (ref shape 2)))))
+
+  (define (_randn-raw shape)
+    (let (n (length shape))
+      (cond
+        (= n 1) (omni-torch-randn-1d (car shape))
+        (= n 2) (omni-torch-randn-2d (car shape) (ref shape 1))
+        (= n 3) (omni-torch-randn-3d (car shape) (ref shape 1) (ref shape 2)))))
+
+  (define (_reshape-raw h shape)
+    (let (n (length shape))
+      (cond
+        (= n 1) (omni-torch-reshape-1d h (car shape))
+        (= n 2) (omni-torch-reshape-2d h (car shape) (ref shape 1))
+        (= n 3) (omni-torch-reshape-3d h (car shape) (ref shape 1) (ref shape 2)))))
+
+  (define (tensor/zeros shape)
+    (_wrap (_zeros-raw shape torch/float32)))
+  (define (tensor/ones shape)
+    (_wrap (_ones-raw shape torch/float32)))
+  (define (tensor/rand shape)
+    (_wrap (_rand-raw shape)))
+  (define (tensor/arange start end step)
+    (_wrap (omni-torch-arange start end step)))
+  (define (tensor/linspace n)
+    (_wrap (omni-torch-linspace n)))
+  (define (tensor/eye n)
+    (_wrap (omni-torch-eye n)))
+  (define (tensor/randn shape)
+    (_wrap (_randn-raw shape)))
+
+  (define (tensor/clamp t min-val max-val)
+    (_wrap (omni-torch-clamp t.handle min-val max-val)))
+
+  (define (tensor/powf t exp)
+    (_wrap-same (omni-torch-pow-scalar-f t.handle exp) t))
+
+  (define (tensor/neg t)
+    (_wrap-same (omni-torch-neg t.handle) t))
+
+  (define (tensor/matmul a b)
+    (_wrap (omni-torch-matmul a.handle b.handle)))
+  (define (tensor/mm a b)
+    (_wrap (omni-torch-mm a.handle b.handle)))
+  (define (tensor/mv a b)
+    (_wrap (omni-torch-mv a.handle b.handle)))
+  (define (tensor/dot a b)
+    (_wrap (omni-torch-dot a.handle b.handle)))
+  (define (tensor/transpose t d0 d1)
+    (_wrap (omni-torch-transpose t.handle d0 d1)))
+
+  (define (tensor/sum t)
+    (_wrap (omni-torch-sum t.handle)))
+  (define (tensor/mean t)
+    (_wrap (omni-torch-mean t.handle)))
+  (define (tensor/min-val t)
+    (_wrap (omni-torch-min t.handle)))
+  (define (tensor/max-val t)
+    (_wrap (omni-torch-max t.handle)))
+  (define (tensor/sum-dim t dim)
+    (_wrap (omni-torch-sum-dim t.handle dim)))
+  (define (tensor/mean-dim t dim)
+    (_wrap (omni-torch-mean-dim t.handle dim)))
+  (define (tensor/min-dim t dim)
+    (_wrap (omni-torch-min-dim t.handle dim)))
+  (define (tensor/max-dim t dim)
+    (_wrap (omni-torch-max-dim t.handle dim)))
+
+  (define (tensor/reshape t shape)
+    (_wrap (_reshape-raw t.handle shape)))
+  (define (tensor/flatten t)
+    (_wrap (omni-torch-flatten t.handle)))
+  (define (tensor/squeeze t)
+    (_wrap (omni-torch-squeeze t.handle)))
+  (define (tensor/unsqueeze t dim)
+    (_wrap (omni-torch-unsqueeze t.handle dim)))
+  (define (tensor/cat a b dim)
+    (_wrap (omni-torch-cat-2 a.handle b.handle dim)))
+  (define (tensor/stack a b dim)
+    (_wrap (omni-torch-stack-2 a.handle b.handle dim)))
+  (define (tensor/slice t dim start end)
+    (_wrap (omni-torch-slice t.handle dim start end)))
+  (define (tensor/clone t)
+    (_wrap (omni-torch-clone t.handle)))
+  (define (tensor/to-dtype t dtype)
+    (_wrap (omni-torch-to-dtype t.handle dtype)))
+
+  (define (tensor/exp t)
+    (_wrap-same (omni-torch-exp t.handle) t))
+  (define (tensor/log t)
+    (_wrap-same (omni-torch-log t.handle) t))
+  (define (tensor/pow t n)
+    (_wrap-same (omni-torch-pow-scalar t.handle n) t))
+  (define (tensor/sin t)
+    (_wrap-same (omni-torch-sin t.handle) t))
+  (define (tensor/cos t)
+    (_wrap-same (omni-torch-cos t.handle) t))
+  (define (tensor/tanh t)
+    (_wrap-same (omni-torch-tanh t.handle) t))
+  (define (tensor/sigmoid t)
+    (_wrap-same (omni-torch-sigmoid t.handle) t))
+
+  (define (tensor/relu t)
+    (_wrap-same (omni-torch-relu t.handle) t))
+  (define (tensor/softmax t dim)
+    (_wrap-same (omni-torch-softmax t.handle dim) t))
+  (define (tensor/log-softmax t dim)
+    (_wrap-same (omni-torch-log-softmax t.handle dim) t))
+
+  (define (tensor/item t)
+    (omni-torch-item-f64 t.handle))
+  (define (tensor/item-int t)
+    (omni-torch-item-i64 t.handle))
+
+  (define (tensor/free t)
+    (omni-torch-free t.handle))
+  (define (tensor/print t)
+    (omni-torch-print t.handle))
+
+  (define (tensor? x) (is? x Tensor))
+  (define (tensor/contiguous? t) (= 1 (omni-torch-is-contiguous t.handle)))
+  (define (tensor/contiguous t)
+    (_wrap (omni-torch-contiguous t.handle)))
+  (define (tensor/ensure-contiguous t)
+    (if (tensor/contiguous? t)
+      t
+      (tensor/contiguous t)))
+
+  (define (tensor/free-all lst)
+    (if (null? lst) nil
+      (begin (tensor/free (car lst)) (tensor/free-all (cdr lst)))))
+
+  (define (tensor/zeros-like t) (_wrap (omni-torch-zeros-like t.handle)))
+  (define (tensor/ones-like t) (_wrap (omni-torch-ones-like t.handle)))
+  (define (tensor/randn-like t) (_wrap (omni-torch-randn-like t.handle)))
+
+  (define (tensor/softplus t) (_wrap-same (omni-torch-softplus t.handle) t))
+  (define (tensor/silu t) (_wrap-same (omni-torch-silu t.handle) t))
+  (define (tensor/gelu t) (_wrap-same (omni-torch-gelu t.handle) t))
+
+  (define (tensor/bmm a b) (_wrap (omni-torch-bmm a.handle b.handle)))
+  (define (tensor/cumsum t dim) (_wrap (omni-torch-cumsum t.handle dim)))
+
+  (define (tensor/rms-norm t) (_wrap (omni-torch-rms-norm t.handle 2)))
+  (define (tensor/layer-norm t) (_wrap (omni-torch-layer-norm t.handle 2)))
+
+  (define (tensor/embedding weight indices) (_wrap (omni-torch-embedding weight.handle indices.handle)))
+
+  (define (tensor/where cond a b) (_wrap (omni-torch-where cond.handle a.handle b.handle)))
+  (define (tensor/is-not-a-number t)
+    (_wrap (omni-torch-is-not-a-number t.handle)))
+  (define (tensor/is-infinite t)
+    (_wrap (omni-torch-is-infinite t.handle)))
+  (define (tensor/is-finite t)
+    (_wrap (omni-torch-is-finite t.handle)))
+  (define (tensor/nan-to-number t nan-value pos-inf neg-inf)
+    (_wrap (omni-torch-nan-to-num t.handle nan-value pos-inf neg-inf)))
+  (define (tensor/median t)
+    (_wrap (omni-torch-median t.handle)))
+  (define (tensor/median-dim t dim)
+    (_wrap (omni-torch-median-dim t.handle dim)))
+  (define (tensor/quantile t q)
+    (_wrap (omni-torch-quantile t.handle q)))
+  (define (tensor/quantile-dim t q dim)
+    (_wrap (omni-torch-quantile-dim t.handle q dim)))
+  (define (tensor/covariance a b)
+    (_wrap (omni-torch-covariance a.handle b.handle)))
+  (define (tensor/correlation a b)
+    (_wrap (omni-torch-correlation a.handle b.handle)))
+  (define (tensor/histogram t bins min max)
+    (_wrap (omni-torch-histogram t.handle bins min max)))
+  (define (tensor/unique-values-with-counts t)
+    (_wrap (omni-torch-unique-values-with-counts t.handle)))
+  (define (tensor/count-distinct t)
+    (_wrap (omni-torch-count-distinct t.handle)))
+  (define (tensor/clamp-inplace t min max)
+    (omni-torch-clamp-inplace t.handle min max)
+    (torch/_ensure-void-ok "tensor/clamp-inplace")
+    t)
+  (define (tensor/fill-missing-inplace t nan-value posinf neginf)
+    (omni-torch-fill-missing-inplace t.handle nan-value posinf neginf)
+    (torch/_ensure-void-ok "tensor/fill-missing-inplace")
+    t)
+  (define (tensor/set-num-threads threads)
+    (omni-torch-set-num-threads threads)
+    (torch/_ensure-void-ok "tensor/set-num-threads"))
+  (define (tensor/get-num-threads)
+    (omni-torch-get-num-threads))
+  (define (tensor/set-memory-limit-bytes bytes)
+    (omni-torch-set-memory-limit-bytes bytes)
+    (torch/_ensure-void-ok "tensor/set-memory-limit-bytes"))
+  (define (tensor/memory-report)
+    (list (omni-torch-get-memory-limit-bytes)
+          (omni-torch-get-memory-allocated-bytes)
+          (omni-torch-get-memory-peak-bytes)))
+
+  (define (tensor/var-dim t dim) (_wrap (omni-torch-var-dim t.handle dim)))
+  (define (tensor/std-dim t dim) (_wrap (omni-torch-std-dim t.handle dim)))
+  (define (tensor/argmax t dim) (_wrap (omni-torch-argmax t.handle dim)))
+  (define (tensor/argmin t dim) (_wrap (omni-torch-argmin t.handle dim)))
+
+  (define (tensor/dropout t p training) (_wrap (omni-torch-dropout t.handle p training)))
+
+  (define (tensor/permute t dims)
+    (let (n (length dims))
+      (cond
+        (= n 3) (_wrap (omni-torch-permute-3d t.handle (car dims) (ref dims 1) (ref dims 2)))
+        (= n 4) (_wrap (omni-torch-permute-4d t.handle (car dims) (ref dims 1) (ref dims 2) (ref dims 3)))
+        true t)))
+
+  (define (stats/describe/count t)
+    t.numel)
+  (define (stats/describe/minimum t)
+    (tensor/min-val t))
+  (define (stats/describe/minimum-dim t dim keep-dim)
+    (stats/_maybe-keepdim t dim keep-dim (tensor/min-dim t dim)))
+  (define (stats/describe/maximum t)
+    (tensor/max-val t))
+  (define (stats/describe/maximum-dim t dim keep-dim)
+    (stats/_maybe-keepdim t dim keep-dim (tensor/max-dim t dim)))
+  (define (stats/describe/mean t)
+    (tensor/mean (tensor/flatten (stats/_as-accumulation-tensor t))))
+  (define (stats/describe/mean-dim t dim keep-dim)
+    (stats/_maybe-keepdim t dim keep-dim
+      (tensor/mean-dim (stats/_as-accumulation-tensor t)
+                       (stats/_normalize-dim t dim))))
+  (define (stats/describe/variance t)
+    (tensor/var-dim (tensor/flatten (stats/_as-accumulation-tensor t)) 0))
+  (define (stats/describe/variance-dim t dim keep-dim)
+    (stats/_maybe-keepdim t dim keep-dim
+      (tensor/var-dim (stats/_as-accumulation-tensor t)
+                      (stats/_normalize-dim t dim))))
+  (define (stats/describe/std t)
+    (sqrt (stats/describe/variance t)))
+  (define (stats/describe/std-dim t dim keep-dim)
+    (sqrt (stats/describe/variance-dim t dim keep-dim)))
+  (define (stats/association/covariance a b)
+    (tensor/covariance a b))
+  (define (stats/association/correlation a b)
+    (tensor/correlation a b))
+  (define (stats/association/_normalize-dim a b dim)
+    (if (<> a.ndim b.ndim)
+      (error "association/covariance-dim requires matching rank")
+      (let (axis (stats/_normalize-dim a dim))
+        (if (<> (ref a.shape axis) (ref b.shape axis))
+          (error "association/covariance-dim requires matching dimension sizes")
+          axis))))
+  (define (stats/association/covariance-dim a b dim keep-dim)
+    (let (axis (stats/association/_normalize-dim a b dim))
+      (if (< (ref a.shape axis) 2)
+        (error "association/covariance-dim requires at least 2 elements on dim")
+        (let (a64 (stats/_as-accumulation-tensor a)
+              b64 (stats/_as-accumulation-tensor b)
+              da (- a64 (tensor/mean-dim a64 axis true))
+              db (- b64 (tensor/mean-dim b64 axis true)))
+          (stats/_maybe-keepdim a axis keep-dim
+            (/ (tensor/sum-dim (tensor/mul da db) axis)
+               (- (ref a.shape axis) 1)))))))
+  (define (stats/association/correlation-dim a b dim keep-dim)
+    (let (axis (stats/association/_normalize-dim a b dim))
+      (if (< (ref a.shape axis) 2)
+        (error "association/correlation-dim requires at least 2 elements on dim")
+        (let (a64 (stats/_as-accumulation-tensor a)
+              b64 (stats/_as-accumulation-tensor b)
+              da (- a64 (tensor/mean-dim a64 axis true))
+              db (- b64 (tensor/mean-dim b64 axis true))
+              num (tensor/sum-dim (tensor/mul da db) axis)
+              den (sqrt (tensor/mul (tensor/std-dim a64 axis)
+                                   (tensor/std-dim b64 axis))))
+          (stats/_maybe-keepdim a axis keep-dim (/ num den))))))
+  (define (stats/distribution/histogram t bins min max)
+    (tensor/histogram t bins min max))
+  (define (stats/distribution/skewness t)
+    (let (x (tensor/flatten (stats/_as-accumulation-tensor t))
+          mu (tensor/mean (tensor/flatten (stats/_as-accumulation-tensor t))))
+      (let (centered (- x mu)
+            sigma2 (tensor/mean (tensor/pow centered 2))
+            sigma3 (tensor/pow (sqrt sigma2) 3))
+        (/ (tensor/mean (tensor/pow centered 3)) sigma3))))
+  (define (stats/distribution/kurtosis t)
+    (let (x (tensor/flatten (stats/_as-accumulation-tensor t))
+          sigma2 (tensor/mean (tensor/pow (- x (tensor/mean x)) 2))
+          kurt (tensor/mean (tensor/pow (- x (tensor/mean x)) 4)))
+      (- (/ kurt (tensor/pow sigma2 2)) 3)))
+  (define (stats/distribution/skewness-dim t dim keep-dim)
+    (let (axis (stats/_normalize-dim t dim)
+          tx (stats/_as-accumulation-tensor t)
+          centered (- tx (tensor/mean-dim tx axis true)))
+      (stats/_maybe-keepdim t dim keep-dim
+        (/ (tensor/mean-dim (tensor/pow centered 3) axis)
+           (tensor/pow (sqrt (tensor/mean-dim (tensor/pow centered 2) axis)) 3)))))
+  (define (stats/distribution/kurtosis-dim t dim keep-dim)
+    (let (axis (stats/_normalize-dim t dim)
+          tx (stats/_as-accumulation-tensor t)
+          centered (- tx (tensor/mean-dim tx axis true))
+          m2 (tensor/mean-dim (tensor/pow centered 2) axis)
+          m4 (tensor/mean-dim (tensor/pow centered 4) axis))
+      (stats/_maybe-keepdim t dim keep-dim (- (/ m4 (tensor/pow m2 2)) 3))))
+  (define (stats/robust/median t)
+    (tensor/median t))
+  (define (stats/robust/median-dim t dim keep-dim)
+    (stats/_maybe-keepdim t dim keep-dim (tensor/median-dim t dim)))
+  (define (stats/robust/quantile t q)
+    (tensor/quantile t q))
+  (define (stats/robust/quantile-dim t q dim keep-dim)
+    (stats/_maybe-keepdim t dim keep-dim (tensor/quantile-dim t q dim)))
+  (define (stats/robust/interquartile-range t)
+    (- (stats/robust/quantile t 0.75) (stats/robust/quantile t 0.25)))
+  (define (stats/robust/interquartile-range-dim t dim keep-dim)
+    (stats/_maybe-keepdim t dim keep-dim
+      (- (tensor/quantile-dim t 0.75 dim)
+         (tensor/quantile-dim t 0.25 dim))))
+  (define (stats/robust/median-absolute-deviation t)
+    (stats/robust/median (tensor/abs (- (tensor/flatten t) (stats/robust/median (tensor/flatten t))))))
+  (define (stats/robust/median-absolute-deviation-dim t dim keep-dim)
+    (stats/_maybe-keepdim t dim keep-dim
+      (tensor/median (tensor/abs (- t (tensor/median-dim t dim true))))))
+
+  (define (stats/missing/count t)
+    (tensor/item-int (tensor/sum (tensor/is-finite t))))
+  (define (stats/missing/count-dim t dim keep-dim)
+    (stats/_maybe-keepdim t dim keep-dim (tensor/sum-dim (tensor/is-finite t) dim)))
+  (define (stats/missing/_replace-missing-with value nan-replace posinf-replace neginf-replace)
+    (let (x (tensor/clone (stats/_as-accumulation-tensor value)))
+      (tensor/fill-missing-inplace x nan-replace posinf-replace neginf-replace)
+      x))
+  (define (stats/missing/_mean-dim value dim)
+    (/ (tensor/sum-dim (stats/missing/_replace-missing-with value 0.0 0.0 0.0) dim)
+       (tensor/sum-dim (tensor/is-finite value) dim)))
+
+  (define (stats/missing/sum t)
+    (let (x (tensor/clone (stats/_as-accumulation-tensor t)))
+      (tensor/fill-missing-inplace x 0.0 0.0 0.0)
+      (tensor/sum x)))
+  (define (stats/missing/sum-dim t dim keep-dim)
+    (stats/_maybe-keepdim t dim keep-dim
+      (tensor/sum-dim (stats/missing/_replace-missing-with t 0.0 0.0 0.0) dim)))
+
+  (define (stats/missing/minimum t)
+    (let (x (tensor/clone (stats/_as-accumulation-tensor t))
+          inf (/ 1.0 0.0))
+      (tensor/fill-missing-inplace x inf inf inf)
+      (tensor/min-val x)))
+  (define (stats/missing/minimum-dim t dim keep-dim)
+    (stats/_maybe-keepdim t dim keep-dim
+      (tensor/min-dim (stats/missing/_replace-missing-with t (/ 1.0 0.0) (/ 1.0 0.0) (/ 1.0 0.0))
+                      dim)))
+
+  (define (stats/missing/maximum t)
+    (let (x (tensor/clone (stats/_as-accumulation-tensor t))
+          neg-inf (- (/ 1.0 0.0)))
+      (tensor/fill-missing-inplace x neg-inf neg-inf neg-inf)
+      (tensor/max-val x)))
+  (define (stats/missing/maximum-dim t dim keep-dim)
+    (stats/_maybe-keepdim t dim keep-dim
+      (tensor/max-dim (stats/missing/_replace-missing-with t (- (/ 1.0 0.0)) (- (/ 1.0 0.0)) (- (/ 1.0 0.0)))
+                      dim)))
+
+  (define (stats/missing/mean t)
+    (let (finite (stats/missing/count t)
+          x (tensor/clone (stats/_as-accumulation-tensor t)))
+      (tensor/fill-missing-inplace x 0.0 0.0 0.0)
+      (/ (tensor/sum x) finite)))
+  (define (stats/missing/mean-dim t dim keep-dim)
+    (stats/_maybe-keepdim t dim keep-dim
+      (/ (tensor/sum-dim (stats/missing/_replace-missing-with t 0.0 0.0 0.0) dim)
+         (tensor/sum-dim (tensor/is-finite t) dim))))
+
+  (define (stats/missing/variance t)
+    (let (finite (stats/missing/count t)
+          x (tensor/clone (stats/_as-accumulation-tensor t))
+          m (stats/missing/mean t))
+      (tensor/fill-missing-inplace x 0.0 0.0 0.0)
+      (/ (tensor/sum (tensor/pow (- x m) 2)) finite)))
+  (define (stats/missing/variance-dim t dim keep-dim)
+    (stats/_maybe-keepdim t dim keep-dim
+      (/ (tensor/sum-dim (tensor/pow (- (stats/missing/_replace-missing-with t 0.0 0.0 0.0)
+                                        (stats/missing/_mean-dim t dim))
+                               2)
+                         dim)
+         (tensor/sum-dim (tensor/is-finite t) dim))))
+
+  (define (stats/missing/std t)
+    (sqrt (stats/missing/variance t)))
+  (define (stats/missing/std-dim t dim keep-dim)
+    (sqrt (stats/missing/variance-dim t dim keep-dim))))

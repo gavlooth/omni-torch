@@ -1,0 +1,97 @@
+(import "lib/executor_types.omni")
+(import executor-types :all)
+(import "lib/executor_context.omni")
+(import "lib/executor_context_ops.omni")
+(import "lib/executor_plan.omni")
+(import "lib/executor_run.omni")
+
+(import executor-context :all)
+(import executor-context-ops :all)
+(import executor-plan :all)
+(import executor-run :all)
+
+(define (pass msg)
+  (println (string-append msg " OK")))
+
+(define (assert-true msg pred)
+  (if pred
+    (pass msg)
+    (error (string-append "FAIL: " msg))))
+
+(define (assert-eq msg got expected)
+  (if (= got expected)
+    (pass msg)
+    (error (string-append "FAIL: " msg))))
+
+(define (assert-bool msg got expected)
+  (if (= got expected)
+    (pass msg)
+    (error (string-append "FAIL: " msg))))
+
+(println "=== Executor skeleton conformance ===")
+
+(define ctx0 (executor/context-new))
+(assert-true "context created" (> ctx0.max-threads 0))
+
+(define ctx1 (executor/context-update-limits ctx0 2 4096))
+(assert-eq "limits update max-threads" ctx1.max-threads 2)
+(assert-eq "limits update memory limit" ctx1.memory-limit-bytes 4096)
+
+(define ctx2 (executor/context-update-timeout ctx1 2 4))
+(assert-eq "timeout-ms configured" ctx2.timeout-ms 2)
+
+(define ctx2b (executor/context-tick ctx2))
+(assert-true "context tick increases heartbeat" (= 1 ctx2b.heartbeat))
+(assert-eq "timeout tick accounting" ctx2b.timeout-elapsed-ms 4)
+
+(define timeout-ctx (executor/context-update-timeout ctx0 1 1))
+(define timeout-ctx-ticked (executor/blocking-step timeout-ctx "timeout-smoke"))
+(define timeout-rpt (executor/context-execution-report timeout-ctx-ticked))
+(assert-eq "timeout elapsed in report" timeout-rpt.timeout-elapsed-ms 1)
+(assert-true "execution report exposes cancellation state" (= 0 timeout-rpt.cancelled))
+
+(define started (executor/context-start-op ctx2 "skeleton-op"))
+(define op-id (car started))
+(define ctx3 (ref started 1))
+(assert-eq "first op id" op-id 1)
+(assert-true "op events recorded" (= (executor/context-op-count ctx3) 1))
+
+(define ctx4 (executor/context-finish-op ctx3 op-id "skeleton-op" "ok"))
+(assert-eq "op events recorded after finish" (executor/context-op-count ctx4) 2)
+(define last-op-event (ref (executor/context-op-events ctx4) 1))
+(assert-eq "last op event id" last-op-event.op-id op-id)
+
+(define ctx5 (executor/context-append-diagnostic ctx4 "info" "skeleton pass" "test"))
+(assert-eq "diagnostics count" (length (executor/context-diagnostics ctx5)) 1)
+
+(define ctx6 (executor/context-cancel ctx5))
+(assert-true "context cancelled" ctx6.cancelled)
+(assert-true "cancelled context has cancelled state" (executor/context-cancelled? ctx6))
+
+;; Plan and operator interface smoke checks.
+(define p0 (executor/plan-new))
+(define p1 (executor/plan-add-scan p0 'table '(id feature)))
+(define p2 (executor/plan-add-filter p1 'table '(> x 0)))
+(assert-eq "plan operator append" (executor/plan-op-count p2) 2)
+
+(define op1 (executor/operator-scan 1 'table '(id feature)))
+(define op2 (executor/op-run (executor/context-new) op1))
+(assert-true "op-run updates context" (= (executor/context-op-count op2) 2))
+(define op-rpt (executor/context-execution-report op2))
+(assert-eq "execution report captures operator events" op-rpt.op-count 2)
+(assert-true "execution report serializes diagnostics field" (= 0 op-rpt.cancelled))
+(define op-timings (executor/context-timings op2))
+(assert-true "execution report captures operator timing" (= (length op-timings) 1))
+(define op1-timing (car op-timings))
+(assert-eq "operator timing uses op id" op1-timing.op-id 1)
+(assert-true "operator timing has non-negative elapsed heartbeat" (> op1-timing.elapsed-heartbeat -1))
+(define op-mems (executor/context-op-memories op2))
+(assert-true "execution report captures operator memory usage" (= (length op-mems) 1))
+(define op1-mem (car op-mems))
+(assert-eq "operator memory uses op id" op1-mem.op-id 1)
+(assert-true "operator memory has non-negative bytes" (> op1-mem.memory-bytes -1))
+(assert-eq "operator memory freed after run" 0 op-rpt.memory-usage-bytes)
+(assert-true "operator peak memory tracks usage" (> op-rpt.peak-memory-bytes -1))
+
+
+(println "=== Executor skeleton conformance PASSED ===")

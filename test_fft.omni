@@ -1,0 +1,20 @@
+(import "lib/torch.omni" :all)
+(define u (tensor/randn '(1 4 8)))
+(println "u OK")
+(println (format "u ndim=%d numel=%d" u.ndim u.numel))
+
+;; Raw FFT call
+(define uh (omni-torch-fft-rfft u.handle 1))
+(println (format "rfft handle: %d" uh))
+
+;; Wrap it
+(define uw (_wrap uh))
+(println (format "rfft wrapped: ndim=%d numel=%d" uw.ndim uw.numel))
+
+;; fftfreq
+(define fr (omni-torch-fft-fftfreq 4))
+(println (format "fftfreq handle: %d" fr))
+(define fw (_wrap fr))
+(println (format "fftfreq wrapped: ndim=%d" fw.ndim))
+
+(println "FFT OK")

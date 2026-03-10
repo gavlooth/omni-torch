@@ -1,0 +1,105 @@
+;; Data preparation pipeline primitives.
+
+(module data.pipeline
+  (export pipeline/new
+          pipeline/new-with-steps
+          pipeline/with-step
+          pipeline/fit
+          pipeline/transform
+          pipeline/fit-transform
+          pipeline/serialize
+          pipeline/deserialize
+          pipeline/pipeline?
+          pipeline/stages
+          pipeline/fitted?
+          Pipeline)
+
+  (import "../torch.omni" :all)
+
+  (define [type] Pipeline
+    (^List steps)
+    (^Bool fitted)
+    (^Int fit-ndim)
+    (^Int fit-columns)
+    (^Int fit-rows)
+    (^Int fit-dtype))
+
+  (define (pipeline/new)
+    (Pipeline '() false 0 0 0 0))
+
+  (define (pipeline/new-with-steps steps)
+    (Pipeline steps false 0 0 0 0))
+
+  (define (pipeline/with-step p step)
+    (Pipeline (append p.steps (list step)) p.fitted p.fit-ndim p.fit-columns p.fit-rows p.fit-dtype))
+
+  (define (pipeline/_validate-fit-context p data)
+    (if (not (tensor? data))
+      (error "pipeline/transform expects tensor inputs")
+      (if (not (= p.fit-ndim data.ndim))
+        (error "pipeline/transform expects data with the same rank as fit data")
+        (if (and (> p.fit-ndim 1) (not (= p.fit-columns (ref data.shape 1)))
+                 (not (= p.fit-columns 0)))
+          (error "pipeline/transform requires matching feature dimension as fit data")
+          (if (and (> p.fit-rows 0) (> (ref data.shape 0) p.fit-rows))
+            (error "pipeline/transform cannot increase row count beyond fit partition")
+            (if (not (= p.fit-dtype data.dtype))
+              (error "pipeline/transform expects matching input dtype as fit data")
+              true))))))
+
+  (define (pipeline/pipeline? p)
+    (is? p Pipeline))
+
+  (define (pipeline/stages p)
+    p.steps)
+
+  (define (pipeline/fitted? p)
+    p.fitted)
+
+  (define (pipeline/_apply-steps steps data)
+    (if (null? steps)
+      data
+      (pipeline/_apply-steps (cdr steps) ((car steps) data))))
+
+(define (pipeline/fit p data)
+  (if (pipeline/pipeline? p)
+    (if (tensor? data)
+      (let (normalized (tensor/ensure-contiguous data))
+        (Pipeline p.steps
+                  true
+                  normalized.ndim
+                  (if (> normalized.ndim 1) (ref normalized.shape 1) 0)
+                  (if (= normalized.ndim 0) 0 (ref normalized.shape 0))
+                  normalized.dtype))
+      (error "pipeline/fit expects tensor inputs"))
+    (error "pipeline/fit expects a Pipeline")))
+
+  (define (pipeline/transform p data)
+  (if (pipeline/pipeline? p)
+    (if p.fitted
+      (if (pipeline/_validate-fit-context p data)
+        (let (normalized (tensor/ensure-contiguous data))
+          (pipeline/_apply-steps p.steps normalized))
+        (error "pipeline/transform not compatible with fitted partition shape"))
+      (error "pipeline/transform requires pipeline to be fitted"))
+    (error "pipeline/transform expects a Pipeline")))
+
+  (define (pipeline/fit-transform p data)
+    (let (fitted (pipeline/fit p data))
+      (pipeline/transform fitted data)))
+
+  (define (pipeline/serialize p)
+    (if (pipeline/pipeline? p)
+      (list p.steps p.fitted p.fit-ndim p.fit-columns p.fit-rows p.fit-dtype)
+      (error "pipeline/serialize expects a Pipeline")))
+
+  (define (pipeline/deserialize state)
+    (let (n (length state))
+      (cond
+        ((= n 6)
+         (Pipeline (ref state 0) (ref state 1) (ref state 2) (ref state 3) (ref state 4) (ref state 5)))
+        ((= n 4)
+         (Pipeline (ref state 0) (ref state 1) (ref state 2) (ref state 3) 0 0))
+        (else
+         (error "pipeline/deserialize expects a serialized pipeline state with either 4 or 6 elements")))))
+)

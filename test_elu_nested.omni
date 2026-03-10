@@ -1,0 +1,54 @@
+(import "lib/torch.omni" :all)
+(define x (tensor/randn '(1 4 8)))
+(define w (* (tensor/randn '(8 8)) 0.02))
+
+(define (elu1 x)
+  (let (ex (tensor/exp x)
+        pos (+ x 1)
+        z (tensor/zeros x.shape)
+        mask (_wrap (omni-torch-gt x.handle z.handle)))
+    (_wrap (omni-torch-where mask.handle pos.handle ex.handle))))
+
+;; elu1 at top level
+(define r0 (elu1 x))
+(println "elu top OK")
+
+;; elu1 inside function, just return
+(define (f1 x) (elu1 x))
+(define r1 (f1 x))
+(println "elu in fn OK")
+
+;; elu1 + matmul inside function
+(define (f2 x w)
+  (let (a (tensor/matmul x w))
+    (elu1 a)))
+(define r2 (f2 x w))
+(println "matmul+elu in fn OK")
+
+;; elu1 result used in further matmul
+(define (f3 x w)
+  (let (q (elu1 (tensor/matmul x w)))
+    (tensor/matmul q w)))
+(define r3 (f3 x w))
+(println "elu+matmul chain in fn OK")
+
+;; TWO elu1 calls in one function
+(define (f4 x w)
+  (let (q (elu1 (tensor/matmul x w))
+        k (elu1 (tensor/matmul x w)))
+    (+ q k)))
+(define r4 (f4 x w))
+(println "2x elu in fn OK")
+
+;; TWO elu + further ops
+(define (f5 x w)
+  (let (q (elu1 (tensor/matmul x w))
+        k (elu1 (tensor/matmul x w))
+        v (tensor/matmul x w)
+        kt (tensor/transpose k 1 2)
+        kv (tensor/matmul kt v))
+    (tensor/matmul q kv)))
+(define r5 (f5 x w))
+(println "full attention in fn OK")
+
+(println "ALL PASSED")

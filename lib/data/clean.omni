@@ -1,0 +1,248 @@
+;; Data cleanup primitives and preparation operators.
+
+(module data.clean
+  (export clean/replace-missing-constant
+          clean/replace-missing-mean
+          clean/replace-missing-median
+          clean/replace-missing-most-frequent
+          clean/duplicate-row-indices
+          clean/remove-duplicate-rows
+          clean/remap-class-labels
+          clean/class-distribution-report
+          clean/detect-outliers-z-score
+          clean/detect-outliers-iqr
+          clean/clip
+          clean/clip-quantile
+          clean/feature-profile-before-cleanup
+          clean/feature-profile-after-cleanup
+          clean/validate-clean-target)
+
+  (import "../torch.omni" :all)
+  (import "../stats/missing.omni" :all)
+
+  (define (clean/_validate-row-major data)
+    (if (not (tensor? data))
+      (error "row-major helpers expect tensor inputs")
+      (if (= data.ndim 2)
+        true
+        (error "row-major helpers expect rank 2 tensors")))
+
+  (define (clean/_rows data)
+    (ref data.shape 0))
+
+  (define (clean/_columns data)
+    (ref data.shape 1))
+
+  (define (clean/_row-equal? row-a row-b)
+    (= (tensor/item-int (tensor/sum (tensor/eq row-a row-b)))
+       (length row-b.shape)))
+
+  (define (clean/_any-prior-row-equal? row data prior-indices)
+    (if (null? prior-indices)
+      false
+      (if (clean/_row-equal? row (tensor/select data 0 (car prior-indices)))
+        true
+        (clean/_any-prior-row-equal? row data (cdr prior-indices)))))
+
+  (define (clean/_row-in-list? row rows)
+    (if (null? rows)
+      false
+      (if (clean/_row-equal? row (car rows))
+        true
+        (clean/_row-in-list? row (cdr rows)))))
+
+  (define (clean/_collect-duplicate-indices data)
+    (let (nrows (clean/_rows data))
+      (let loop (i 0 seen '() acc '())
+        (if (= i nrows)
+          (reverse acc)
+          (let (row (tensor/select data 0 i))
+            (if (clean/_any-prior-row-equal? row data seen)
+              (loop (+ i 1) seen (cons i acc))
+              (loop (+ i 1) (cons i seen) acc)))))))
+
+  (define (clean/_collect-unique-rows data)
+    (let (nrows (clean/_rows data))
+      (let loop (i 0 rows '())
+        (if (= i nrows)
+          rows
+          (let (row (tensor/select data 0 i))
+            (if (clean/_row-in-list? row rows)
+              (loop (+ i 1) rows)
+              (loop (+ i 1) (append rows (list row)))))))))
+
+  (define (clean/_stack-rows rows)
+    (if (null? rows)
+      (tensor/zeros (list 0 0))
+      (let loop (acc (tensor/unsqueeze (car rows) 0) rest (cdr rows))
+          (if (null? rest)
+            acc
+            (loop (tensor/cat acc (tensor/unsqueeze (car rest) 0) 0)
+                  (cdr rest))))))
+
+  (define (clean/_class-values labels)
+    (tensor/select (tensor/unique-values-with-counts (tensor/flatten labels)) 0 0))
+
+  (define (clean/_class-counts labels)
+    (tensor/select (tensor/unique-values-with-counts (tensor/flatten labels)) 0 1))
+
+  (define (clean/_remap-class-loop labels classes idx mapped)
+    (if (= idx (ref classes.shape 0))
+      mapped
+      (let (mask (tensor/eq labels (tensor/select classes idx)))
+        (clean/_remap-class-loop labels
+                                classes
+                                (+ idx 1)
+                                (+ mapped (* mask idx))))))
+
+  (define (clean/_feature-profile data)
+    (if (not (tensor? data))
+      (error "feature profile helpers expect tensor inputs")
+      (if (= data.ndim 2)
+        (let* ((rows (ref data.shape 0))
+               (finite-count (missing/count-dim data 0 false))
+               (missing-count (- (* (tensor/ones-like finite-count) rows) finite-count))
+               (missing-ratio (if (= rows 0)
+                                  (tensor/zeros-like finite-count)
+                                  (/ missing-count rows)))
+               (mean (missing/mean-dim data 0 false))
+               (std (missing/std-dim data 0 false))
+               (minimum (missing/minimum-dim data 0 false))
+               (maximum (missing/maximum-dim data 0 false)))
+          (list (list 'finite-count finite-count)
+                (list 'missing-count missing-count)
+                (list 'missing-ratio missing-ratio)
+                (list 'mean mean)
+                (list 'std std)
+                (list 'minimum minimum)
+                (list 'maximum maximum)))
+        (error "feature profile helpers expect rank 2 tensors where rows are samples and columns are features")))
+
+  (define (clean/duplicate-row-indices data)
+    (if (clean/_validate-row-major data)
+      (clean/_collect-duplicate-indices data)))
+
+  (define (clean/remove-duplicate-rows data)
+    (if (clean/_validate-row-major data)
+      (let (clean-rows (clean/_collect-unique-rows data))
+        (if (= (length clean-rows) (clean/_rows data))
+          (tensor/clone data)
+          (clean/_stack-rows clean-rows)))))
+
+  (define (clean/remap-class-labels labels)
+    (if (not (tensor? labels))
+      (error "clean/remap-class-labels expects tensor inputs")
+      (let (shape labels.shape
+            classes (clean/_class-values labels)
+            flat (tensor/flatten labels)
+            remapped-base (tensor/zeros-like (tensor/flatten labels)))
+        (let (remapped (clean/_remap-class-loop flat classes 0 remapped-base))
+          (list (tensor/reshape remapped shape) classes))))
+
+  (define (clean/class-distribution-report labels)
+    (if (not (tensor? labels))
+      (error "clean/class-distribution-report expects tensor inputs")
+      (let (u (tensor/unique-values-with-counts (tensor/flatten labels)))
+        (list (tensor/select u 0 0)
+              (tensor/select u 0 1)))))
+
+  (define (clean/feature-profile-before-cleanup data)
+    (clean/_feature-profile data))
+
+  (define (clean/feature-profile-after-cleanup data)
+    (clean/_feature-profile data))
+
+  (define (clean/replace-missing-constant value replacement)
+    (let (out (tensor/clone value))
+      (tensor/fill-missing-inplace out replacement replacement replacement)
+      out))
+
+  (define (clean/replace-missing-mean value)
+    (let (out (tensor/clone value)
+          (fill (missing/mean value)))
+      (tensor/fill-missing-inplace out fill fill fill)
+      out))
+
+  (define (clean/replace-missing-median value)
+    (let (finite-count (tensor/item-int (tensor/sum (tensor/is-finite value))))
+      (if (= finite-count 0)
+        (error "clean/replace-missing-median requires at least one finite value")
+        (let (out (tensor/clone value)
+              (fill (tensor/median
+                      (tensor/nan-to-number out 0.0 0.0 0.0))))
+          (tensor/fill-missing-inplace out fill fill fill)
+          out))))
+
+  (define (clean/replace-missing-most-frequent value)
+    (let (finite-count (stats/missing/count value))
+      (if (= finite-count 0)
+        (error "clean/replace-missing-most-frequent requires at least one finite value")
+        (let (inf (/ 1.0 0.0)
+              u (tensor/unique-values-with-counts (tensor/nan-to-number value inf inf inf))
+              counts (tensor/select u 0 1)
+              finite-values (tensor/select u 0 0))
+          (let (mode-index (tensor/item-int (tensor/argmax (tensor/where (tensor/is-finite finite-values)
+                                                                     counts
+                                                                     (* -1 counts))
+                                               0)))
+                out (tensor/clone value)
+                mode (tensor/item (tensor/select finite-values mode-index)))
+            (tensor/fill-missing-inplace out mode mode mode)
+            out))))
+
+  (define (clean/detect-outliers-z-score value threshold)
+    (if (not (tensor? value))
+      (error "clean/detect-outliers-z-score expects tensor inputs")
+      (if (= value.ndim 0)
+        (error "clean/detect-outliers-z-score expects a tensor-like object with ndim >= 1")
+        (if (or (<= threshold 0.0) (= (missing/count value) 0))
+          (error "clean/detect-outliers-z-score requires positive threshold and at least one finite value")
+          (let (mean (stats/missing/mean value)
+                std (tensor/item (stats/missing/std value))
+                finite (tensor/is-finite value))
+            (if (= std 0.0)
+              (tensor/zeros-like value)
+              (let (zscore (abs (/ (- value mean) std))
+                    threshold-mask (* (tensor/ones-like value) threshold))
+                (tensor/where finite
+                              (tensor/gt zscore threshold-mask)
+                              (tensor/zeros-like value)))))))))
+
+  (define (clean/detect-outliers-iqr value)
+    (if (not (tensor? value))
+      (error "clean/detect-outliers-iqr expects tensor inputs")
+      (if (= value.ndim 0)
+        (error "clean/detect-outliers-iqr expects a tensor-like object with ndim >= 1")
+        (let (finite-count (missing/count value))
+          (if (= finite-count 0)
+            (error "clean/detect-outliers-iqr requires at least one finite value")
+            (let (finite (tensor/is-finite value)
+                  ones (tensor/ones-like value)
+                  cleaned (tensor/nan-to-number value 0.0 0.0 0.0)
+                  q1 (tensor/item (stats/robust/quantile cleaned 0.25))
+                  q3 (tensor/item (stats/robust/quantile cleaned 0.75)))
+              (let (iqr (- q3 q1))
+                (if (= iqr 0.0)
+                  (tensor/zeros-like value)
+                  (let (lower-tensor (* ones (- q1 (* 1.5 iqr)))
+                        upper-tensor (* ones (+ q3 (* 1.5 iqr)))
+                    (tensor/where finite
+                                  (+ (tensor/lt lower-tensor value)
+                                     (tensor/gt value upper-tensor))
+                                  (tensor/zeros-like value))))))))))
+
+
+  (define (clean/clip value low high)
+    (tensor/clamp (tensor/clone value) low high))
+
+  (define (clean/clip-quantile value q-low q-high)
+    (let (lower (tensor/quantile value q-low)
+          upper (tensor/quantile value q-high)
+          out (tensor/clone value))
+      (tensor/clamp out lower upper)))
+
+  (define (clean/validate-clean-target value)
+    (if (= (tensor/ndim value) 0)
+      (error "clean/validate-clean-target expects a tensor-like object with ndim >= 1")
+      true))
+)

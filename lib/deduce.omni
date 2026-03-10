@@ -1,0 +1,337 @@
+;; Deduce to tensor bridge helpers and contract documentation.
+
+(module data.deduce
+  (export deduce/relation
+          deduce/relation?
+          deduce/relation-columns
+          deduce/relation-rows
+          deduce/relation-cols
+          deduce/relation-quality
+          deduce/relation-source
+          deduce/relation-lineage
+          deduce/relation-contract
+          deduce/relation->tensor
+          deduce/relation-select
+          deduce/tensor->deduce-relation
+          deduce/tensor-summary-bridge
+          deduce/lineage-record
+          deduce/lineage-append
+          deduce/rule/complete-row-mask
+          deduce/rule/complete-column-mask
+          deduce/rule/row-missing-ratio
+          deduce/rule/row-missing-threshold?
+          deduce/rule/column-missing-threshold?
+          deduce/rule/explain-row-membership
+          deduce/rule/feature-gate-mask
+          deduce/order/default-deterministic-rules
+          deduce/order/relation-by-rows
+          deduce/rule/logic-output-by-row-order)
+
+  (import "../torch.omni" :all)
+  (import "../data/clean.omni" :all)
+
+  (define [type] DeduceRelation
+    (^Tensor tensor)
+    (^List columns)
+    (^Int rows)
+    (^Int cols)
+    (^List quality-facts)
+    (^List source-meta)
+    (^List lineage))
+
+  (define (deduce/_validate-2d tensor)
+    (if (not (tensor? tensor))
+      (error "deduce helpers expect tensor inputs")
+      (if (= tensor.ndim 2)
+        true
+        (error "deduce helpers for table workflows require exactly rank-2 tensors"))))
+
+  (define (deduce/_validate-columns columns expected-count)
+    (if (not (= expected-count 0))
+      (if (not (= (length columns) expected-count))
+        (error "deduce relation columns must match tensor column count")
+        true)
+      true))
+
+  (define (deduce/_quality-facts tensor)
+    (list (list 'row-count (ref tensor.shape 0))
+          (list 'column-count (ref tensor.shape 1))
+          (list 'dtype tensor.dtype)
+          (list 'feature-profile (clean/feature-profile-before-cleanup tensor))))
+
+  (define (deduce/relation contract-tensor columns)
+    (let (contract (deduce/relation-contract)
+          normalized (tensor/ensure-contiguous contract-tensor))
+      (if (deduce/_validate-2d normalized)
+        (let (rows (ref normalized.shape 0)
+              cols (ref normalized.shape 1))
+        (if (deduce/_validate-columns columns cols)
+          (DeduceRelation normalized
+                          columns
+                          rows
+                          cols
+                          (deduce/_deduce-facts normalized)
+                          (list contract)
+                          (list (deduce/lineage-record 'tensor->relation
+                                                         rows
+                                                         cols
+                                                         rows
+                                                         cols
+                                                         (list 'input-columns columns))))
+          (error "deduce/relation column schema mismatch")))))
+
+  (define (deduce/relation? value)
+    (is? value DeduceRelation))
+
+  (define (deduce/relation-columns rel)
+    (if (deduce/relation? rel)
+      rel.columns
+      (error "deduce/relation-columns expects a DeduceRelation")))
+
+  (define (deduce/relation-rows rel)
+    (if (deduce/relation? rel)
+      rel.rows
+      (error "deduce/relation-rows expects a DeduceRelation")))
+
+  (define (deduce/relation-cols rel)
+    (if (deduce/relation? rel)
+      rel.cols
+      (error "deduce/relation-cols expects a DeduceRelation")))
+
+  (define (deduce/relation-quality rel)
+    (if (deduce/relation? rel)
+      rel.quality-facts
+      (error "deduce/relation-quality expects a DeduceRelation")))
+
+  (define (deduce/relation-source rel)
+    (if (deduce/relation? rel)
+      rel.source-meta
+      (error "deduce/relation-source expects a DeduceRelation")))
+
+  (define (deduce/relation-lineage rel)
+    (if (deduce/relation? rel)
+      rel.lineage
+      (error "deduce/relation-lineage expects a DeduceRelation")))
+
+  (define (deduce/lineage-record op-name input-rows input-cols output-rows output-cols params)
+    (list (list 'op op-name)
+          (list 'input-shape (list input-rows input-cols))
+          (list 'output-shape (list output-rows output-cols))
+          (list 'params params)))
+
+  (define (deduce/lineage-append relation lineage-record)
+    (if (deduce/relation? relation)
+      (DeduceRelation relation.tensor
+                      relation.columns
+                      relation.rows
+                      relation.cols
+                      relation.quality-facts
+                      relation.source-meta
+                      (append relation.lineage (list lineage-record)))
+      (error "deduce/lineage-append expects a DeduceRelation")))
+
+  (define (deduce/_zero-batch rows cols)
+    (tensor/zeros (list 0 cols)))
+
+  (define (deduce/_append-row batch row)
+    (if (= (ref batch.shape 0) 0)
+      row
+      (tensor/cat batch row 0)))
+
+  (define (deduce/_normalize-selection idx rows)
+    (if (null? idx)
+      (error "deduce/relation-select expects row indices as a non-empty list or an empty list for full selection")
+      (if (and (>= idx 0) (< idx rows))
+        idx
+        (error "deduce/relation-select row index out of range"))))
+
+  (define (deduce/_select-loop data idxs acc)
+    (if (null? idxs)
+      acc
+      (let* ((raw (deduce/_normalize-selection (car idxs) (ref data.shape 0)))
+             (row (tensor/unsqueeze (tensor/ensure-contiguous (tensor/select data 0 raw)) 0)))
+        (deduce/_select-loop data (cdr idxs) (deduce/_append-row acc row)))))
+
+  (define (deduce/_indices-from-mask-loop mask target idx acc)
+    (if (= idx (ref mask.shape 0))
+      (reverse acc)
+      (let (value (tensor/item-int (tensor/select mask 0 idx)))
+        (if (= value target)
+          (deduce/_indices-from-mask-loop mask target (+ idx 1) (append acc (list idx)))
+          (deduce/_indices-from-mask-loop mask target (+ idx 1) acc)))))
+
+  (define (deduce/_indices-from-mask mask target)
+    (if (= (ref mask.shape 0) 0)
+      '()
+      (deduce/_indices-from-mask-loop mask target 0 '())))
+
+  (define (deduce/_row-range-loop end i acc)
+    (if (= i end)
+      (reverse acc)
+      (deduce/_row-range-loop end (+ i 1) (append acc (list i)))))
+
+  (define (deduce/_row-range n)
+    (if (= n 0)
+      '()
+      (deduce/_row-range-loop n 0 '())))
+
+  (define (deduce/_validate-row-index-rel relation idxs)
+    (let (n (ref relation.tensor.shape 0))
+      (let loop (xs idxs)
+        (if (null? xs)
+          true
+          (let (idx (car xs))
+            (if (and (>= idx 0) (< idx n))
+              (loop (cdr xs))
+              (error "deduce/order/relation-by-rows requires valid row indices")))))))
+
+  (define (deduce/_append-rows relation idxs tensor-acc)
+    (if (null? idxs)
+      tensor-acc
+      (let* ((idx (car idxs))
+             (row (tensor/unsqueeze (tensor/ensure-contiguous (tensor/select relation.tensor 0 idx)) 0))
+             (next (if (= (ref tensor-acc.shape 0) 0)
+                     row
+                     (tensor/cat tensor-acc row 0))))
+        (deduce/_append-rows relation (cdr idxs) next))))
+
+  (define (deduce/order/relation-by-rows relation idxs)
+    (if (deduce/relation? relation)
+      (let (order (if (null? idxs) (deduce/_row-range relation.rows) idxs))
+        (if (deduce/_validate-row-index-rel relation order)
+          (let* ((out-tensor (if (null? order)
+                              (tensor/zeros (list 0 relation.cols))
+                              (deduce/_append-rows relation order (tensor/zeros (list 0 relation.cols)))))
+                 (lineage (deduce/lineage-record 'logic-order
+                                                  relation.rows
+                                                  relation.cols
+                                                  (ref out-tensor.shape 0)
+                                                  relation.cols
+                                                  (list 'row-order 'deduce/rule/logic-output-by-row-order))) )
+            (DeduceRelation out-tensor
+                            relation.columns
+                            (if (= (ref out-tensor.shape 0) 0) 0 (ref out-tensor.shape 0))
+                            relation.cols
+                            (deduce/_deduce-facts out-tensor)
+                            relation.source-meta
+                            (append relation.lineage (list lineage))))
+          (error "deduce/order/relation-by-rows failed row validation")))
+      (error "deduce/order/relation-by-rows expects a DeduceRelation")))
+
+  (define (deduce/order/default-deterministic-rules)
+    (list (list 'primary 'source-row-index)
+          (list 'secondary 'operator-instance-id)
+          (list 'missing-position 'deterministic-stable)
+          (list 'notes 'logic-enriched-results-should-preserve-row-order-as-tie-break)))
+
+  (define (deduce/relation->tensor rel idxs)
+    (if (deduce/relation? rel)
+      (if (null? idxs)
+        (tensor/clone rel.tensor)
+        (let (zero (deduce/_zero-batch (ref rel.tensor.shape 0) rel.cols)
+              rows (deduce/_select-loop rel.tensor idxs zero))
+          rows))
+      (error "deduce/relation->tensor expects a DeduceRelation")))
+
+  (define (deduce/relation-select rel idxs)
+    (if (deduce/relation? rel)
+      (deduce/relation->tensor rel idxs)
+      (error "deduce/relation-select expects a DeduceRelation")))
+
+  (define (deduce/_deduce-facts data)
+    (list (deduce/relation-contract)
+          (list 'nrows (ref data.shape 0))
+          (list 'ncols (ref data.shape 1))
+          (list 'dtype data.dtype)))
+
+  (define (deduce/tensor->deduce-relation data columns)
+    (deduce/relation data columns))
+
+  (define (deduce/tensor-summary-bridge data)
+    (if (deduce/_validate-2d data)
+      (list (list 'tensor-shape data.shape)
+            (list 'relation-contract (deduce/relation-contract))
+            (list 'quality (deduce/_deduce-facts data))
+            (list 'feature-profile (clean/feature-profile-before-cleanup data)))
+      (error "deduce/tensor-summary-bridge expects a valid tensor")))
+
+  (define (deduce/relation-contract)
+    (list 'relation->tensor  'requires-2d
+          'tensor->relation  'preserves-row-order
+          'row-major-schema  'column-first-order
+          'ordering          deduce/order/default-deterministic-rules
+          'metadata           'row-and-feature-stats
+          'leakage-boundary   'explicit-bridge-only))
+
+  (define (deduce/rule/complete-row-mask relation)
+    (if (deduce/relation? relation)
+      (let (finite (tensor/is-finite relation.tensor)
+            columns relation.cols)
+        (if (= columns 0)
+          (error "deduce/rule/complete-row-mask requires 2D tables with at least one column")
+          (let (finite-count (tensor/sum-dim finite 1))
+            (tensor/eq finite-count (* (tensor/ones-like finite-count) columns)))))
+      (error "deduce/rule/complete-row-mask expects a DeduceRelation")))
+
+  (define (deduce/rule/complete-column-mask relation)
+    (if (deduce/relation? relation)
+      (let (finite (tensor/is-finite relation.tensor)
+            rows relation.rows)
+        (if (= rows 0)
+          (error "deduce/rule/complete-column-mask requires rows > 0")
+          (let (finite-count (tensor/sum-dim finite 0))
+            (tensor/eq finite-count (* (tensor/ones-like finite-count) rows)))))
+      (error "deduce/rule/complete-column-mask expects a DeduceRelation")))
+
+  (define (deduce/rule/row-missing-ratio relation)
+    (if (deduce/relation? relation)
+      (let* ((columns relation.cols)
+             (finite-count (tensor/sum-dim (tensor/is-finite relation.tensor) 1))
+             (total (tensor/ones-like finite-count)))
+        (if (= columns 0)
+          (error "deduce/rule/row-missing-ratio requires 2D tables with at least one column")
+          (/ (- (* total columns) finite-count) (* total columns))))
+      (error "deduce/rule/row-missing-ratio expects a DeduceRelation")))
+
+  (define (deduce/rule/row-missing-threshold? relation threshold)
+    (if (deduce/relation? relation)
+      (tensor/lt (deduce/rule/row-missing-ratio relation) threshold)
+      (error "deduce/rule/row-missing-threshold? expects a DeduceRelation")))
+
+  (define (deduce/rule/column-missing-threshold? relation threshold)
+    (if (deduce/relation? relation)
+      (let* ((rows relation.rows)
+             (finite-count (tensor/sum-dim (tensor/is-finite relation.tensor) 0))
+             (total (* (tensor/ones-like finite-count) rows)))
+        (if (= rows 0)
+          (error "deduce/rule/column-missing-threshold? requires rows > 0")
+          (tensor/lt (/ (- total finite-count) total) threshold)))
+      (error "deduce/rule/column-missing-threshold? expects a DeduceRelation")))
+
+  (define (deduce/rule/explain-row-membership relation decision-mask)
+    (if (not (deduce/relation? relation))
+      (error "deduce/rule/explain-row-membership expects a DeduceRelation")
+      (if (not (= (ref decision-mask.shape 0) relation.rows))
+        (error "deduce/rule/explain-row-membership expects a row mask aligned to relation")
+        (let (accepted (deduce/_indices-from-mask decision-mask 1)
+              rejected (deduce/_indices-from-mask decision-mask 0))
+          (list (list 'accepted accepted)
+                (list 'rejected rejected)
+                (list 'accepted-count (length accepted))
+                (list 'rejected-count (length rejected)))))))
+
+  (define (deduce/rule/logic-output-by-row-order relation decision-mask)
+    (if (not (deduce/relation? relation))
+      (error "deduce/rule/logic-output-by-row-order expects a DeduceRelation")
+      (if (not (= (ref decision-mask.shape 0) relation.rows))
+        (error "deduce/rule/logic-output-by-row-order expects a row mask aligned to relation")
+        (deduce/order/relation-by-rows relation (deduce/_indices-from-mask decision-mask 1)))))
+
+  (define (deduce/rule/feature-gate-mask relation column-index minimum-value maximum-value)
+    (if (deduce/relation? relation)
+      (if (or (< column-index 0) (>= column-index relation.cols))
+        (error "deduce/rule/feature-gate-mask requires a valid column index")
+        (let (col (tensor/select relation.tensor 1 column-index))
+          (* (tensor/gt col minimum-value) (tensor/lt col maximum-value))))
+      (error "deduce/rule/feature-gate-mask expects a DeduceRelation")))
+)

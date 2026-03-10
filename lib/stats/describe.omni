@@ -1,0 +1,60 @@
+;; Statistics: basic scalar descriptors for tensors
+;; This module intentionally depends on lib/torch.omni for core tensor operators.
+
+(module stats.describe
+  (export describe/count describe/minimum describe/minimum-dim
+          describe/maximum describe/maximum-dim
+          describe/mean describe/mean-dim
+          describe/variance describe/variance-dim
+          describe/std describe/std-dim)
+
+  (import "../torch.omni" :all)
+
+  (define (describe/count t)
+    t.numel)
+
+  (define (describe/_as-accumulation-tensor t)
+    (if (= t.dtype torch/float64)
+      t
+      (tensor/to-dtype t torch/float64)))
+
+  (define (describe/_validate-dim t dim)
+    (let (axis (if (< dim 0) (+ dim t.ndim) dim))
+      (if (or (< axis 0) (>= axis t.ndim))
+        (error "describe/_validate-dim requires dim in range [-ndim, ndim-1]")
+        axis)))
+
+  (define (describe/_maybe-keepdim source dim keep-dim value)
+    (if keep-dim
+      (tensor/unsqueeze value (describe/_validate-dim source dim))
+      value))
+
+  (define (describe/minimum t)
+    (tensor/min-val t))
+  (define (describe/minimum-dim t dim keep-dim)
+    (describe/_maybe-keepdim t dim keep-dim (tensor/min-dim t dim)))
+
+  (define (describe/maximum t)
+    (tensor/max-val t))
+  (define (describe/maximum-dim t dim keep-dim)
+    (describe/_maybe-keepdim t dim keep-dim (tensor/max-dim t dim)))
+
+  (define (describe/mean t)
+    (tensor/mean (tensor/flatten (describe/_as-accumulation-tensor t))))
+  (define (describe/mean-dim t dim keep-dim)
+    (describe/_maybe-keepdim t dim keep-dim
+      (tensor/mean-dim (describe/_as-accumulation-tensor t)
+                       (describe/_validate-dim t dim))))
+
+  (define (describe/variance t)
+    (tensor/var-dim (tensor/flatten (describe/_as-accumulation-tensor t)) 0))
+  (define (describe/variance-dim t dim keep-dim)
+    (describe/_maybe-keepdim t dim keep-dim
+      (tensor/var-dim (describe/_as-accumulation-tensor t)
+                      (describe/_validate-dim t dim))))
+
+  (define (describe/std t)
+    (sqrt (describe/variance t)))
+  (define (describe/std-dim t dim keep-dim)
+    (sqrt (describe/variance-dim t dim keep-dim)))
+)

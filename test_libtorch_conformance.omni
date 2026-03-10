@@ -1,0 +1,192 @@
+(import "lib/torch.omni" :all)
+
+(define (pass msg)
+  (println (string-append msg " OK")))
+
+(define (fail msg)
+  (error (string-append "FAIL: " msg)))
+
+(define (assert-eq msg got expected)
+  (if (= got expected)
+    (pass msg)
+    (fail msg)))
+
+(define (assert-true msg pred)
+  (if pred
+    (pass msg)
+    (fail msg)))
+
+(println "=== Libtorch backend conformance ===")
+
+;; Thread + runtime controls
+(define original-thread-count (tensor/get-num-threads))
+(tensor/set-num-threads 2)
+(assert-eq "set/get-num-threads" (tensor/get-num-threads) 2)
+(tensor/set-num-threads original-thread-count)
+(assert-eq "restore thread count" (tensor/get-num-threads) original-thread-count)
+
+(define (run-memory-check)
+  (tensor/set-memory-limit-bytes 10485760)
+  (define report-before (tensor/memory-report))
+  (assert-eq "memory limit set" (car report-before) 10485760)
+  (define tmp (tensor/zeros '(64 64)))
+  (define report-after-alloc (tensor/memory-report))
+  (assert-true "memory increases after allocation"
+               (> (ref report-after-alloc 1) (ref report-before 1)))
+  (tensor/free tmp)
+  (define report-after-free (tensor/memory-report))
+  (assert-true "memory decreases after free" (<= (ref report-after-free 1) (ref report-after-alloc 1)))
+  (tensor/set-memory-limit-bytes 0))
+
+(run-memory-check)
+
+;; Constructors and field metadata
+(define zeros (tensor/zeros '(2 3)))
+(define ones (tensor/ones '(2 3)))
+(assert-eq "zeros ndim" zeros.ndim 2)
+(assert-eq "ones ndim" ones.ndim 2)
+(assert-eq "zeros numel" zeros.numel 6)
+
+(define arange-t (tensor/arange 1 6 1))
+(assert-eq "arange numel" arange-t.numel 5)
+(assert-eq "sum(arange)" (tensor/item-int (tensor/sum arange-t)) 15)
+(assert-eq "mean(arange) sum integer form" (tensor/item-int (tensor/mean arange-t)) 3)
+
+(define linspace-t (tensor/linspace 5))
+(assert-eq "linspace ndim" linspace-t.ndim 1)
+
+(define eye-t (tensor/eye 4))
+(assert-eq "eye ndim" eye-t.ndim 2)
+
+;; Dispatch operators
+(define p1 (+ arange-t 1))
+(define p2 (- p1 1))
+(define p3 (* p2 2))
+(define p4 (/ p3 2))
+(assert-eq "dispatch add" (tensor/item-int (tensor/sum p1)) 20)
+(assert-eq "dispatch sub" (tensor/item-int (tensor/sum p2)) 15)
+
+(define p5 (tensor/powf arange-t 2.0))
+(define p6 (tensor/pow arange-t 2))
+(assert-true "pow variants shape match" (= p5.ndim p6.ndim))
+
+;; Elementwise and function ops
+(define exp-t (tensor/exp arange-t))
+(define log-t (tensor/log arange-t))
+(define sin-t (tensor/sin arange-t))
+(define cos-t (tensor/cos arange-t))
+(define tanh-t (tensor/tanh arange-t))
+(define sigmoid-t (tensor/sigmoid arange-t))
+(define relu-t (tensor/relu arange-t))
+(define softmax-t (tensor/softmax arange-t 0))
+(assert-eq "exp ndim" exp-t.ndim 1)
+(assert-eq "log ndim" log-t.ndim 1)
+(assert-eq "sin ndim" sin-t.ndim 1)
+(assert-eq "cos ndim" cos-t.ndim 1)
+(assert-eq "tanh ndim" tanh-t.ndim 1)
+(assert-eq "sigmoid ndim" sigmoid-t.ndim 1)
+(assert-eq "relu ndim" relu-t.ndim 1)
+(assert-eq "softmax ndim" softmax-t.ndim 1)
+
+;; Linear algebra
+(define a (tensor/ones '(2 3)))
+(define b (tensor/reshape (tensor/arange 1 7 1) '(3 2)))
+(define mm-out (tensor/mm a b))
+(assert-eq "mm ndim" mm-out.ndim 2)
+(assert-eq "mm numel" mm-out.numel 4)
+
+(define mv-out (tensor/mv b (tensor/ones '(2))))
+(assert-eq "mv ndim" mv-out.ndim 1)
+(define dot-out (tensor/dot (tensor/ones '(3)) (tensor/ones '(3))))
+(assert-eq "dot ndim" dot-out.ndim 0)
+
+(define tr (tensor/transpose b 0 1))
+(assert-eq "transpose ndim" tr.ndim 2)
+
+;; Reductions
+(define s (tensor/sum a))
+(define m (tensor/mean a))
+(define mn (tensor/min-val a))
+(define mx (tensor/max-val a))
+(assert-eq "reduction sum" (tensor/item-int s) 6)
+(assert-true "reduction mean positive" (< 0.0 (tensor/item m)))
+
+(define a2 (tensor/reshape (tensor/arange 1 7 1) '(2 3)))
+(define sd (tensor/sum-dim a2 1))
+(define md (tensor/mean-dim a2 1))
+(define smin (tensor/min-dim a2 1))
+(define smx (tensor/max-dim a2 1))
+(assert-eq "sum-dim ndim" sd.ndim 1)
+(assert-eq "mean-dim ndim" md.ndim 1)
+(assert-eq "min-dim ndim" smin.ndim 1)
+(assert-eq "max-dim ndim" smx.ndim 1)
+
+;; Shape ops
+(define reshaped (tensor/reshape arange-t '(5 1)))
+(define squeeze-input (tensor/ones '(1 1 3)))
+(define squeezed (tensor/squeeze (tensor/reshape squeeze-input '(1 1 3))))
+(define unsq (tensor/unsqueeze (tensor/ones '(3)) 0))
+(define flat (tensor/flatten a2))
+(define catted (tensor/cat a2 a2 0))
+(define stacked (tensor/stack a2 a2 0))
+(define sliced (tensor/slice (tensor/arange 1 13 1) 0 1 5))
+(define slct (tensor/select arange-t 0 1))
+(assert-true "reshape shape" (= (length reshaped.shape) 2))
+(assert-eq "unsqueeze ndim" unsq.ndim 2)
+(assert-true "flatten ndim" (= flat.ndim 1))
+(assert-true "slice ndim" (= sliced.ndim 1))
+(assert-eq "select ndim" slct.ndim 0)
+
+;; Conditional + special numeric masks
+(define ge (tensor/where (> arange-t arange-t) arange-t arange-t))
+(assert-true "where returns rank" (= ge.ndim arange-t.ndim))
+(define isnan-m (tensor/is-not-a-number arange-t))
+(define isinf-m (tensor/is-infinite arange-t))
+(define isfin-m (tensor/is-finite arange-t))
+(define nan-to-num-t (tensor/nan-to-number arange-t 0.0 0.0 0.0))
+(assert-eq "is-finite numel" isfin-m.numel 5)
+(assert-eq "nan-to-number ndim" nan-to-num-t.ndim 1)
+
+;; Stats / association / distribution / robust / missing
+(assert-eq "stats count" (stats/describe/count arange-t) 5)
+(assert-eq "stats minimum" (tensor/item-int (stats/describe/minimum arange-t)) 1)
+(assert-eq "stats maximum" (tensor/item-int (stats/describe/maximum arange-t)) 5)
+(assert-true "stats mean positive" (< 0.0 (tensor/item (stats/describe/mean arange-t))))
+
+(define robust-median (stats/robust/median arange-t))
+(assert-eq "robust median is scalar" robust-median.ndim 0)
+(define q (stats/robust/quantile arange-t 0.5))
+(assert-eq "quantile is scalar" q.ndim 0)
+(define skewness-t (stats/distribution/skewness arange-t))
+(define kurtosis-t (stats/distribution/kurtosis arange-t))
+(define covar-t (stats/association/covariance arange-t arange-t))
+(define corr-t (stats/association/correlation arange-t arange-t))
+(assert-true "distribution skewness shape" (= skewness-t.ndim 0))
+(assert-true "distribution kurtosis shape" (= kurtosis-t.ndim 0))
+(assert-true "association covariance scalar" (= covar-t.ndim 0))
+(assert-true "association correlation scalar" (= corr-t.ndim 0))
+(assert-eq "missing count" (stats/missing/count arange-t) 5)
+(assert-eq "missing sum" (tensor/item-int (stats/missing/sum arange-t)) 15)
+(assert-true "missing variance positive" (> (tensor/item (stats/missing/variance arange-t)) 0.0))
+
+;; Advanced ops
+(define h (tensor/histogram arange-t 3 1.0 5.0))
+(assert-true "histogram ndim" (= h.ndim 1))
+(define u (tensor/unique-values-with-counts arange-t))
+(assert-true "unique-values-with-counts ndim" (= u.ndim 2))
+(define nuniq (tensor/item-int (tensor/count-distinct arange-t)))
+(assert-eq "count-distinct" nuniq 5)
+
+(define clipped (tensor/clamp arange-t 0.0 4.0))
+(assert-true "clamp max bounded" (<= (tensor/item (tensor/max-val clipped)) 4.0))
+(define infilled (tensor/fill-missing-inplace (tensor/clone clipped) 0.0 0.0 0.0))
+(assert-eq "fill-missing preserves shape" infilled.ndim clipped.ndim)
+
+(tensor/free-all (list squeeze-input zeros ones arange-t linspace-t eye-t p1 p2 p3 p4 p5 p6))
+(tensor/free-all (list exp-t log-t sin-t cos-t tanh-t sigmoid-t relu-t softmax-t))
+(tensor/free-all (list a b mm-out mv-out dot-out tr s m mn mx a2 sd md smin smx))
+(tensor/free-all (list reshaped squeezed unsq flat catted stacked sliced slct ge))
+(tensor/free-all (list isnan-m isinf-m isfin-m nan-to-num-t robust-median q
+                       skewness-t kurtosis-t covar-t corr-t h u clipped infilled))
+
+(println "=== Libtorch backend conformance PASSED ===")

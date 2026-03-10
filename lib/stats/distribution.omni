@@ -1,0 +1,61 @@
+;; Distribution helpers for tensor diagnostics.
+
+(module stats.distribution
+  (export distribution/histogram distribution/skewness distribution/skewness-dim
+          distribution/kurtosis distribution/kurtosis-dim)
+
+  (import "../torch.omni" :all)
+
+  (define (distribution/_validate-dim source dim)
+    (let (axis (if (< dim 0) (+ dim source.ndim) dim))
+      (if (or (< axis 0) (>= axis source.ndim))
+        (error "distribution/_validate-dim requires dim in range [-ndim, ndim-1]")
+        axis)))
+
+  (define (distribution/_as-accumulation-tensor t)
+    (if (= t.dtype torch/float64)
+      t
+      (tensor/to-dtype t torch/float64)))
+
+  (define (distribution/_maybe-keepdim source dim keep-dim value)
+    (if keep-dim
+      (tensor/unsqueeze value (distribution/_validate-dim source dim))
+      value))
+
+  (define (distribution/histogram t bins min max)
+    (tensor/histogram t bins min max))
+
+  (define (distribution/skewness t)
+    (let (x (tensor/flatten (distribution/_as-accumulation-tensor t))
+          (mu (tensor/mean (tensor/flatten (distribution/_as-accumulation-tensor t))))
+          )
+      (let (centered (- x mu)
+            (sigma2 (tensor/mean (tensor/pow centered 2)))
+            (sigma3 (tensor/pow (sqrt sigma2) 3)))
+        (/ (tensor/mean (tensor/pow centered 3)) sigma3))))
+
+  (define (distribution/kurtosis t)
+    (let (x (tensor/flatten (distribution/_as-accumulation-tensor t))
+          (mu (tensor/mean (tensor/flatten (distribution/_as-accumulation-tensor t)))
+          )
+          (sigma2 (tensor/mean (tensor/pow (- x (tensor/mean x)) 2)))
+          (kurt (tensor/mean (tensor/pow (- x (tensor/mean x)) 4))))
+      (- (/ kurt (tensor/pow sigma2 2)) 3)))
+
+  (define (distribution/skewness-dim t dim keep-dim)
+    (let (axis (distribution/_validate-dim t dim)
+          tx (distribution/_as-accumulation-tensor t)
+          (mu (tensor/mean-dim tx axis true))
+          (centered (- tx (tensor/mean-dim tx axis true))))
+      (distribution/_maybe-keepdim t dim keep-dim
+        (/ (tensor/mean-dim (tensor/pow centered 3) axis)
+           (tensor/pow (sqrt (tensor/mean-dim (tensor/pow centered 2) axis)) 3))))
+
+  (define (distribution/kurtosis-dim t dim keep-dim)
+    (let (axis (distribution/_validate-dim t dim)
+          tx (distribution/_as-accumulation-tensor t)
+          (centered (- tx (tensor/mean-dim tx axis true)))
+          (m2 (tensor/mean-dim (tensor/pow centered 2) axis))
+          (m4 (tensor/mean-dim (tensor/pow centered 4) axis)))
+      (distribution/_maybe-keepdim t dim keep-dim (- (/ m4 (tensor/pow m2 2)) 3)))
+)

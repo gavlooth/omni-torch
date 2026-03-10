@@ -21,6 +21,13 @@ typedef int64_t ScalarHandle;
 // Returns last error message, or NULL if no error. Caller does NOT free.
 const char* omni_torch_last_error(void);
 
+// === Memory and runtime controls ===
+int64_t omni_torch_get_num_threads(void);
+void omni_torch_set_memory_limit_bytes(int64_t bytes);
+int64_t omni_torch_get_memory_limit_bytes(void);
+int64_t omni_torch_get_memory_allocated_bytes(void);
+int64_t omni_torch_get_memory_peak_bytes(void);
+
 // === Tensor Creation ===
 TensorHandle omni_torch_zeros_1d(int64_t d0, int64_t dtype);
 TensorHandle omni_torch_zeros_2d(int64_t d0, int64_t d1, int64_t dtype);
@@ -48,6 +55,19 @@ int64_t omni_torch_shape(TensorHandle t, int64_t dim_idx);
 int64_t omni_torch_dtype(TensorHandle t);
 int64_t omni_torch_is_contiguous(TensorHandle t);
 int64_t omni_torch_data_ptr(TensorHandle t);
+TensorHandle omni_torch_is_not_a_number(TensorHandle t);
+TensorHandle omni_torch_is_infinite(TensorHandle t);
+TensorHandle omni_torch_is_finite(TensorHandle t);
+TensorHandle omni_torch_nan_to_num(TensorHandle t, double nan, double posinf, double neginf);
+TensorHandle omni_torch_median(TensorHandle t);
+TensorHandle omni_torch_median_dim(TensorHandle t, int64_t dim);
+TensorHandle omni_torch_quantile(TensorHandle t, double q);
+TensorHandle omni_torch_quantile_dim(TensorHandle t, double q, int64_t dim);
+TensorHandle omni_torch_covariance(TensorHandle a, TensorHandle b);
+TensorHandle omni_torch_correlation(TensorHandle a, TensorHandle b);
+TensorHandle omni_torch_histogram(TensorHandle t, int64_t bins, double min, double max);
+TensorHandle omni_torch_unique_values_with_counts(TensorHandle t);
+TensorHandle omni_torch_count_distinct(TensorHandle t);
 
 // === Element Access ===
 // For float tensors: index → double
@@ -89,6 +109,8 @@ TensorHandle omni_torch_min(TensorHandle a);
 TensorHandle omni_torch_max(TensorHandle a);
 TensorHandle omni_torch_sum_dim(TensorHandle a, int64_t dim);
 TensorHandle omni_torch_mean_dim(TensorHandle a, int64_t dim);
+TensorHandle omni_torch_min_dim(TensorHandle a, int64_t dim);
+TensorHandle omni_torch_max_dim(TensorHandle a, int64_t dim);
 
 // === Shape Operations ===
 TensorHandle omni_torch_reshape_1d(TensorHandle a, int64_t d0);
@@ -106,15 +128,29 @@ TensorHandle omni_torch_clone(TensorHandle a);
 TensorHandle omni_torch_contiguous(TensorHandle a);
 TensorHandle omni_torch_to_dtype(TensorHandle a, int64_t dtype);
 
+// Scalar arithmetic: tensor op double → tensor (requires libffi for mixed types)
+TensorHandle omni_torch_add_scalar_f(TensorHandle a, double s);
+TensorHandle omni_torch_sub_scalar_f(TensorHandle a, double s);
+TensorHandle omni_torch_mul_scalar_f(TensorHandle a, double s);
+TensorHandle omni_torch_div_scalar_f(TensorHandle a, double s);
+
+// === Gaussian Random ===
+TensorHandle omni_torch_randn_1d(int64_t d0);
+TensorHandle omni_torch_randn_2d(int64_t d0, int64_t d1);
+
 // === Math ===
 TensorHandle omni_torch_exp(TensorHandle a);
 TensorHandle omni_torch_log(TensorHandle a);
 TensorHandle omni_torch_sqrt(TensorHandle a);
 TensorHandle omni_torch_pow_scalar(TensorHandle a, int64_t exp);
+TensorHandle omni_torch_pow_scalar_f(TensorHandle a, double exp);
 TensorHandle omni_torch_sin(TensorHandle a);
 TensorHandle omni_torch_cos(TensorHandle a);
 TensorHandle omni_torch_tanh(TensorHandle a);
 TensorHandle omni_torch_sigmoid(TensorHandle a);
+
+// === Clamp ===
+TensorHandle omni_torch_clamp(TensorHandle a, double min_val, double max_val);
 
 // === Comparison ===
 TensorHandle omni_torch_eq(TensorHandle a, TensorHandle b);
@@ -137,6 +173,76 @@ void omni_torch_free(TensorHandle t);
 // === Display ===
 void omni_torch_print(TensorHandle t);
 int64_t omni_torch_to_string(TensorHandle t, int64_t buf_ptr, int64_t buf_len);
+
+// === 3D random ===
+TensorHandle omni_torch_rand_3d(int64_t d0, int64_t d1, int64_t d2);
+TensorHandle omni_torch_randn_3d(int64_t d0, int64_t d1, int64_t d2);
+
+// === FFT (for Wave-PDE spectral Laplacian) ===
+TensorHandle omni_torch_fft_rfft(TensorHandle t, int64_t dim);
+TensorHandle omni_torch_fft_irfft(TensorHandle t, int64_t n, int64_t dim);
+TensorHandle omni_torch_fft_fftfreq(int64_t n);   // returns frequency vector
+
+// === Like-constructors ===
+TensorHandle omni_torch_zeros_like(TensorHandle t);
+TensorHandle omni_torch_ones_like(TensorHandle t);
+TensorHandle omni_torch_randn_like(TensorHandle t);
+TensorHandle omni_torch_full_like(TensorHandle t, double val);
+
+// === 4D tensor support ===
+TensorHandle omni_torch_zeros_4d(int64_t d0, int64_t d1, int64_t d2, int64_t d3, int64_t dtype);
+TensorHandle omni_torch_randn_4d(int64_t d0, int64_t d1, int64_t d2, int64_t d3);
+TensorHandle omni_torch_reshape_4d(TensorHandle a, int64_t d0, int64_t d1, int64_t d2, int64_t d3);
+
+// === Additional math ===
+TensorHandle omni_torch_softplus(TensorHandle t);   // log(1 + exp(x))
+TensorHandle omni_torch_silu(TensorHandle t);       // x * sigmoid(x)
+TensorHandle omni_torch_gelu(TensorHandle t);
+TensorHandle omni_torch_floor(TensorHandle t);
+TensorHandle omni_torch_ceil(TensorHandle t);
+
+// === Batch/advanced ops ===
+TensorHandle omni_torch_bmm(TensorHandle a, TensorHandle b);           // batch matmul
+TensorHandle omni_torch_cumsum(TensorHandle t, int64_t dim);
+TensorHandle omni_torch_permute_3d(TensorHandle t, int64_t d0, int64_t d1, int64_t d2);
+TensorHandle omni_torch_permute_4d(TensorHandle t, int64_t d0, int64_t d1, int64_t d2, int64_t d3);
+TensorHandle omni_torch_expand_as(TensorHandle t, TensorHandle other);
+TensorHandle omni_torch_repeat_4d(TensorHandle t, int64_t r0, int64_t r1, int64_t r2, int64_t r3);
+
+// === Conditional / indexing ===
+TensorHandle omni_torch_where(TensorHandle cond, TensorHandle a, TensorHandle b);
+TensorHandle omni_torch_argmax(TensorHandle t, int64_t dim);
+TensorHandle omni_torch_argmin(TensorHandle t, int64_t dim);
+
+// === Embedding ===
+TensorHandle omni_torch_embedding(TensorHandle weight, TensorHandle indices);
+
+// === Variance / std ===
+TensorHandle omni_torch_var_dim(TensorHandle t, int64_t dim);
+TensorHandle omni_torch_std_dim(TensorHandle t, int64_t dim);
+
+// === In-place / mutation ===
+void omni_torch_add_inplace(TensorHandle a, TensorHandle b);
+void omni_torch_mul_inplace(TensorHandle a, TensorHandle b);
+void omni_torch_fill_f64(TensorHandle t, double val);
+void omni_torch_clamp_inplace(TensorHandle t, double min_val, double max_val);
+void omni_torch_fill_missing_inplace(TensorHandle t, double nan, double posinf, double neginf);
+void omni_torch_set_num_threads(int64_t threads);
+
+// === Complex number ops (for FFT) ===
+TensorHandle omni_torch_complex_mul(TensorHandle a, TensorHandle b);   // element-wise complex multiply
+TensorHandle omni_torch_view_as_real(TensorHandle t);
+TensorHandle omni_torch_view_as_complex(TensorHandle t);
+
+// === Norm ===
+TensorHandle omni_torch_layer_norm(TensorHandle t, int64_t norm_dim);  // simplified: last dim
+TensorHandle omni_torch_rms_norm(TensorHandle t, int64_t norm_dim);    // root mean square norm
+
+// === Conv1d (for 1x1 convolutions in Wave-PDE) ===
+TensorHandle omni_torch_conv1d(TensorHandle input, TensorHandle weight, TensorHandle bias, int64_t stride, int64_t padding);
+
+// === Dropout (inference only: identity; train: random mask) ===
+TensorHandle omni_torch_dropout(TensorHandle t, double p, int64_t training);
 
 #ifdef __cplusplus
 }

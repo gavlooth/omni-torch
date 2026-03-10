@@ -1,0 +1,216 @@
+;; Data splitting utilities for common training workflow partitions.
+
+(module data.split
+  (export split/train-test
+          split/train-validation
+          split/train-validation-test
+          split/cross-validation
+          split/stratified)
+
+  (import "../torch.omni" :all)
+
+  (define (split/_validate-size data size)
+    (if (not (tensor? data))
+      (error "split helpers expect tensor inputs")
+      (let (n (ref data.shape 0))
+        (if (or (< size 0) (> size n))
+          (error "split size must be between 0 and number of rows")
+          size))))
+
+  (define (split/train-test data train-size)
+    (if (= data.ndim 0)
+      (error "data split helpers expect a tensor-like object with ndim >= 1")
+      (let (train-count (split/_validate-size data train-size))
+        (list (tensor/slice data 0 0 train-count)
+              (tensor/slice data 0 train-count (ref data.shape 0))))))
+
+  (define (split/train-validation data train-size validation-size)
+    (if (= data.ndim 0)
+      (error "data split helpers expect a tensor-like object with ndim >= 1")
+      (if (> (+ train-size validation-size) (ref data.shape 0))
+        (error "split sizes must be sum to at most number of rows")
+        (let (train-count (split/_validate-size data train-size)
+              validation-start train-size
+              validation-end (+ train-size validation-size))
+          (list (tensor/slice data 0 0 train-count)
+                (tensor/slice data 0 validation-start validation-end))))))
+
+  (define (split/train-validation-test data train-size validation-size)
+    (if (= data.ndim 0)
+      (error "data split helpers expect a tensor-like object with ndim >= 1")
+      (if (> (+ train-size validation-size) (ref data.shape 0))
+        (error "split sizes must be sum to at most number of rows")
+        (let (train-count (split/_validate-size data train-size)
+              validation-start train-size
+              validation-end (+ train-size validation-size))
+          (list (tensor/slice data 0 0 train-count)
+                (tensor/slice data 0 validation-start validation-end)
+                (tensor/slice data 0 validation-end (ref data.shape 0))))))
+
+  (define (split/_divmod total parts)
+    (let loop (remaining total quotient 0)
+      (if (< remaining parts)
+        (list quotient remaining)
+        (loop (- remaining parts) (+ quotient 1)))))
+
+  (define (split/_zero-batch data)
+    (if (= data.ndim 2)
+      (tensor/zeros (list 0 (ref data.shape 1)))
+      (tensor/zeros '(0))))
+
+  (define (split/_append-batch batch rows)
+    (if (= (ref batch.shape 0) 0)
+      rows
+      (if (= (ref rows.shape 0) 0)
+        batch
+        (tensor/cat batch rows 0))))
+
+  (define (split/_distribute-class-rows data labels-flat class-value train-target val-target)
+    (let (n (ref data.shape 0)
+          zero-batch (split/_zero-batch data))
+      (let loop (i 0
+                 train-count 0
+                 val-count 0
+                 train-batch zero-batch
+                 val-batch zero-batch
+                 rest-batch zero-batch)
+        (if (= i n)
+          (list train-batch val-batch rest-batch)
+          (let* ((row-label (tensor/select labels-flat 0 i))
+                 (match (tensor/item-int (tensor/eq row-label class-value)))
+                 (row (tensor/select data 0 i)))
+            (if (= match 1)
+              (if (< train-count train-target)
+                (loop (+ i 1)
+                      (+ train-count 1)
+                      val-count
+                      (split/_append-batch train-batch (tensor/unsqueeze row 0))
+                      val-batch
+                      rest-batch)
+                (if (< val-count val-target)
+                  (loop (+ i 1)
+                        train-count
+                        (+ val-count 1)
+                        train-batch
+                        (split/_append-batch val-batch (tensor/unsqueeze row 0))
+                        rest-batch)
+                  (loop (+ i 1)
+                        train-count
+                        val-count
+                        train-batch
+                        val-batch
+                        (split/_append-batch rest-batch (tensor/unsqueeze row 0)))))
+              (loop (+ i 1) train-count val-count train-batch val-batch rest-batch))))))
+
+  (define (split/_stratify-classes data labels-flat classes class-counts index train-size validation-size n train-batch val-batch rest-batch)
+    (if (= index (ref classes.shape 0))
+      (list train-batch val-batch rest-batch)
+      (let* ((class-value (tensor/select classes index))
+             (class-count (tensor/item-int (tensor/select class-counts index)))
+             (train-quota (ref (split/_divmod (* class-count train-size) n) 0))
+             (validation-quota (ref (split/_divmod (* class-count validation-size) n) 0))
+             (batches (split/_distribute-class-rows data labels-flat class-value train-quota validation-quota)))
+        (split/_stratify-classes data
+                                labels-flat
+                                classes
+                                class-counts
+                                (+ index 1)
+                                train-size
+                                validation-size
+                                n
+                                (split/_append-batch train-batch (ref batches 0))
+                                (split/_append-batch val-batch (ref batches 1))
+                                (split/_append-batch rest-batch (ref batches 2)))))
+
+  (define (split/stratified data labels train-size validation-size)
+    (if (= data.ndim 0)
+      (error "stratified split helper expects tensor-like objects with ndim >= 1")
+      (if (= labels.ndim 0)
+        (error "stratified split helper expects label tensors with ndim >= 1")
+        (if (= data.ndim 1)
+          (error "stratified split helper expects 2D data")
+          (if (> (+ train-size validation-size) (ref data.shape 0))
+            (error "stratified split requires non-negative sizes that sum to at most number of rows")
+            (if (< train-size 0)
+              (error "stratified split requires train-size >= 0")
+              (if (< validation-size 0)
+                (error "stratified split requires validation-size >= 0")
+                (let (n (ref data.shape 0)
+                      labels-flat (tensor/flatten labels))
+                  (if (not (= n (ref labels-flat.shape 0)))
+                    (error "stratified split requires one label per row")
+                    (if (= n 0)
+                      (list (split/_zero-batch data)
+                            (split/_zero-batch data)
+                            (split/_zero-batch data))
+                      (let* ((u (tensor/unique-values-with-counts labels-flat))
+                             (classes (tensor/select u 0 0))
+                             (class-counts (tensor/select u 0 1))
+                             (zero-batch (split/_zero-batch data))
+                             (batches (split/_stratify-classes data
+                                                             labels-flat
+                                                             classes
+                                                             class-counts
+                                                             0
+                                                             train-size
+                                                             validation-size
+                                                             n
+                                                             zero-batch
+                                                             zero-batch
+                                                             zero-batch))
+                             (train-batch (ref batches 0))
+                             (val-batch (ref batches 1))
+                             (rest-batch (ref batches 2)))
+                        (let* ((train-deficit (- train-size (ref train-batch.shape 0)))
+                               (add-to-train (if (> train-deficit 0)
+                                              (if (< (ref rest-batch.shape 0) train-deficit)
+                                                (ref rest-batch.shape 0)
+                                                train-deficit)
+                                              0))
+                               (new-train (split/_append-batch train-batch
+                                                               (tensor/slice rest-batch 0 0 add-to-train)))
+                               (trim-rest (tensor/slice rest-batch 0 add-to-train (ref rest-batch.shape 0)))
+                               (validation-deficit (- validation-size (ref val-batch.shape 0)))
+                               (add-to-val (if (> validation-deficit 0)
+                                              (if (< (ref trim-rest.shape 0) validation-deficit)
+                                                (ref trim-rest.shape 0)
+                                                validation-deficit)
+                                              0))
+                               (new-val (split/_append-batch val-batch
+                                                             (tensor/slice trim-rest 0 0 add-to-val)))
+                               (final-rest (tensor/slice trim-rest 0 add-to-val (ref trim-rest.shape 0))))
+                          (list new-train new-val final-rest)))))))))))
+
+  (define (split/_cross-val-fold data k index base-size extra-folds start acc)
+    (if (= index k)
+      (reverse acc)
+      (let* ((size (+ base-size (if (< index extra-folds) 1 0)))
+             (end (+ start size))
+             (validation (tensor/slice data 0 start end))
+             (train (if (= index 0)
+                      (tensor/slice data 0 end (ref data.shape 0))
+                      (if (= index (- k 1))
+                        (tensor/slice data 0 0 start)
+                        (tensor/cat (tensor/slice data 0 0 start)
+                                    (tensor/slice data 0 end (ref data.shape 0))
+                                    0)))))
+        (split/_cross-val-fold data
+                               k
+                               (+ index 1)
+                               base-size
+                               extra-folds
+                               end
+                               (append acc (list (list train validation))))))
+
+  (define (split/cross-validation data k)
+    (if (= data.ndim 0)
+      (error "cross validation split helper expects tensor-like input with ndim >= 1")
+      (let (n (ref data.shape 0))
+        (if (or (<= k 1) (> k n))
+          (error "cross validation requires 1 < k <= number of rows")
+          (let* ((divmod (split/_divmod n k))
+                 (base-size (ref divmod 0))
+                 (extra-folds (ref divmod 1)))
+            (split/_cross-val-fold data k 0 base-size extra-folds 0 '())))))
+
+)

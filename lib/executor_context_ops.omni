@@ -1,0 +1,78 @@
+(module executor-context-ops
+  (export executor/context-start-op
+          executor/context-finish-op)
+  (import "executor_types.omni")
+  (import "executor_context.omni")
+  (import executor-types :all)
+  (import executor-context :all)
+
+  (define (executor/_append-1 xs item)
+    (append xs (list item)))
+
+  (define (executor/_safe-sub a b)
+    (if (< a b) 0 (- a b)))
+
+  (define (executor/_max a b)
+    (if (> a b) a b))
+
+  (define (executor/_op-memory-bytes op-name)
+    (+ 128 (if op-name 0 0)))
+
+  (define (executor/context-start-op ctx op-name)
+    (let (checked (executor/context-check-blocking-state ctx))
+      (let (op-id checked.next-op-id
+            reserve (executor/_op-memory-bytes op-name)
+            memory-before checked.memory-usage-bytes)
+        (let (memory-after (+ memory-before reserve))
+          (if (and (> checked.memory-limit-bytes 0)
+                   (> memory-after checked.memory-limit-bytes))
+            (error (format "executor memory limit exceeded: memory=%d limit=%d"
+                           memory-after
+                           checked.memory-limit-bytes))
+            (list op-id
+                  (ExecutionContext checked.max-threads
+                                   checked.memory-limit-bytes
+                                   checked.timeout-ms
+                                   checked.timeout-check-interval-ms
+                                   checked.cancelled
+                                   checked.timeout-elapsed-ms
+                                   (+ checked.heartbeat 1)
+                                   (+ checked.next-op-id 1)
+                                   memory-after
+                                   (executor/_max checked.peak-memory-bytes memory-after)
+                                   (executor/_append-1 checked.op-events
+                                                       (OpEvent op-id
+                                                                (if op-name op-name "op")
+                                                                "start"
+                                                                "in-progress"
+                                                                1))
+                                   checked.diagnostics
+                                   checked.op-timings
+                                   checked.op-memories)))))))
+
+  (define (executor/context-finish-op ctx op-id op-name status)
+    (let (checked (executor/context-check-blocking-state ctx))
+      (let (reserve (executor/_op-memory-bytes op-name)
+            memory-before (executor/_safe-sub checked.memory-usage-bytes (executor/_op-memory-bytes op-name))
+            memory-after (executor/_safe-sub checked.memory-usage-bytes (executor/_op-memory-bytes op-name))
+            finished (OpEvent op-id (if op-name op-name "op") "finish" (if status status "ok") 0))
+        (ExecutionContext checked.max-threads
+                         checked.memory-limit-bytes
+                         checked.timeout-ms
+                         checked.timeout-check-interval-ms
+                         checked.cancelled
+                         checked.timeout-elapsed-ms
+                         (+ checked.heartbeat 1)
+                         checked.next-op-id
+                         memory-after
+                         checked.peak-memory-bytes
+                         (executor/_append-1 checked.op-events finished)
+                         checked.diagnostics
+                         (if (> op-id 0)
+                           (executor/_append-1 checked.op-timings (OpTiming op-id 1 (if op-name op-name "")))
+                           checked.op-timings)
+                         (if (> op-id 0)
+                           (executor/_append-1 checked.op-memories
+                                               (OpMemory op-id reserve memory-before memory-after (if op-name op-name "")))
+                           checked.op-memories)))))
+)

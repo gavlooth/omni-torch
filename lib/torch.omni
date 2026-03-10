@@ -1,198 +1,13 @@
-;; Omni Torch — Idiomatic PyTorch bindings for Omni Lisp
-;; Wraps libtorch_omni.so (C shim over libtorch C++ API)
-;; Provides Tensor type with dispatch on +, -, *, /, ref, length, =, <, >, abs, sqrt
-
 (module torch
-  (export Tensor
-          torch/float32 torch/float64 torch/int32 torch/int64
-          tensor/zeros tensor/ones tensor/rand tensor/arange
-          tensor/linspace tensor/eye
-          tensor/neg tensor/matmul tensor/mm tensor/mv tensor/dot tensor/transpose
-          tensor/sum tensor/mean tensor/min-val tensor/max-val
-          tensor/sum-dim tensor/mean-dim
-          tensor/reshape tensor/flatten tensor/squeeze tensor/unsqueeze
-          tensor/cat tensor/stack tensor/slice tensor/clone tensor/to-dtype
-          tensor/exp tensor/log tensor/pow tensor/sin tensor/cos
-          tensor/tanh tensor/sigmoid
-          tensor/relu tensor/softmax tensor/log-softmax
-          tensor/item tensor/item-int
-          tensor/free tensor/print tensor/free-all
-          tensor? tensor/contiguous?
-          _wrap _wrap-same)
-
-  ;; FFI layer
-  (import "ffi/torch.omni" :all)
-
-  ;; Dtype constants
-  (define torch/float32 6)
-  (define torch/float64 7)
-  (define torch/int32 3)
-  (define torch/int64 4)
-
-  ;; Tensor type
-  (define [type] Tensor
-    (^Int handle)
-    (^List shape)
-    (^Int ndim)
-    (^Int numel)
-    (^Int dtype))
-
-  ;; Wrap helpers (handle -> Tensor)
-  (define (_query-shape h nd)
-    (let loop (i 0 acc '())
-      (if (= i nd) (reverse acc)
-        (loop (+ i 1) (cons (omni-torch-shape h i) acc)))))
-
-  (define (_wrap h)
-    (let (nd (omni-torch-dim h)
-          nu (omni-torch-numel h)
-          dt (omni-torch-dtype h))
-      (Tensor h (_query-shape h nd) nd nu dt)))
-
-  (define (_wrap-same h src)
-    (Tensor h src.shape src.ndim src.numel src.dtype))
-
-  ;; Internal shape-dispatching helpers
-  (define (_zeros-raw shape dtype)
-    (let (n (length shape))
-      (cond
-        (= n 1) (omni-torch-zeros-1d (car shape) dtype)
-        (= n 2) (omni-torch-zeros-2d (car shape) (ref shape 1) dtype)
-        (= n 3) (omni-torch-zeros-3d (car shape) (ref shape 1) (ref shape 2) dtype))))
-
-  (define (_ones-raw shape dtype)
-    (let (n (length shape))
-      (cond
-        (= n 1) (omni-torch-ones-1d (car shape) dtype)
-        (= n 2) (omni-torch-ones-2d (car shape) (ref shape 1) dtype)
-        (= n 3) (omni-torch-ones-3d (car shape) (ref shape 1) (ref shape 2) dtype))))
-
-  (define (_rand-raw shape)
-    (let (n (length shape))
-      (cond
-        (= n 1) (omni-torch-rand-1d (car shape))
-        (= n 2) (omni-torch-rand-2d (car shape) (ref shape 1)))))
-
-  (define (_reshape-raw h shape)
-    (let (n (length shape))
-      (cond
-        (= n 1) (omni-torch-reshape-1d h (car shape))
-        (= n 2) (omni-torch-reshape-2d h (car shape) (ref shape 1))
-        (= n 3) (omni-torch-reshape-3d h (car shape) (ref shape 1) (ref shape 2)))))
-
-  ;; Public constructors
-  (define (tensor/zeros shape)
-    (_wrap (_zeros-raw shape torch/float32)))
-  (define (tensor/ones shape)
-    (_wrap (_ones-raw shape torch/float32)))
-  (define (tensor/rand shape)
-    (_wrap (_rand-raw shape)))
-  (define (tensor/arange start end step)
-    (_wrap (omni-torch-arange start end step)))
-  (define (tensor/linspace n)
-    (_wrap (omni-torch-linspace n)))
-  (define (tensor/eye n)
-    (_wrap (omni-torch-eye n)))
-
-  ;; Tensor-specific operations (tensor/ prefix)
-  (define (tensor/neg t)
-    (_wrap-same (omni-torch-neg t.handle) t))
-
-  ;; Linear algebra
-  (define (tensor/matmul a b)
-    (_wrap (omni-torch-matmul a.handle b.handle)))
-  (define (tensor/mm a b)
-    (_wrap (omni-torch-mm a.handle b.handle)))
-  (define (tensor/mv a b)
-    (_wrap (omni-torch-mv a.handle b.handle)))
-  (define (tensor/dot a b)
-    (_wrap (omni-torch-dot a.handle b.handle)))
-  (define (tensor/transpose t d0 d1)
-    (_wrap (omni-torch-transpose t.handle d0 d1)))
-
-  ;; Reductions
-  (define (tensor/sum t)
-    (_wrap (omni-torch-sum t.handle)))
-  (define (tensor/mean t)
-    (_wrap (omni-torch-mean t.handle)))
-  (define (tensor/min-val t)
-    (_wrap (omni-torch-min t.handle)))
-  (define (tensor/max-val t)
-    (_wrap (omni-torch-max t.handle)))
-  (define (tensor/sum-dim t dim)
-    (_wrap (omni-torch-sum-dim t.handle dim)))
-  (define (tensor/mean-dim t dim)
-    (_wrap (omni-torch-mean-dim t.handle dim)))
-
-  ;; Shape ops
-  (define (tensor/reshape t shape)
-    (_wrap (_reshape-raw t.handle shape)))
-  (define (tensor/flatten t)
-    (_wrap (omni-torch-flatten t.handle)))
-  (define (tensor/squeeze t)
-    (_wrap (omni-torch-squeeze t.handle)))
-  (define (tensor/unsqueeze t dim)
-    (_wrap (omni-torch-unsqueeze t.handle dim)))
-  (define (tensor/cat a b dim)
-    (_wrap (omni-torch-cat-2 a.handle b.handle dim)))
-  (define (tensor/stack a b dim)
-    (_wrap (omni-torch-stack-2 a.handle b.handle dim)))
-  (define (tensor/slice t dim start end)
-    (_wrap (omni-torch-slice t.handle dim start end)))
-  (define (tensor/clone t)
-    (_wrap (omni-torch-clone t.handle)))
-  (define (tensor/to-dtype t dtype)
-    (_wrap (omni-torch-to-dtype t.handle dtype)))
-
-  ;; Math
-  (define (tensor/exp t)
-    (_wrap-same (omni-torch-exp t.handle) t))
-  (define (tensor/log t)
-    (_wrap-same (omni-torch-log t.handle) t))
-  (define (tensor/pow t n)
-    (_wrap-same (omni-torch-pow-scalar t.handle n) t))
-  (define (tensor/sin t)
-    (_wrap-same (omni-torch-sin t.handle) t))
-  (define (tensor/cos t)
-    (_wrap-same (omni-torch-cos t.handle) t))
-  (define (tensor/tanh t)
-    (_wrap-same (omni-torch-tanh t.handle) t))
-  (define (tensor/sigmoid t)
-    (_wrap-same (omni-torch-sigmoid t.handle) t))
-
-  ;; NN
-  (define (tensor/relu t)
-    (_wrap-same (omni-torch-relu t.handle) t))
-  (define (tensor/softmax t dim)
-    (_wrap-same (omni-torch-softmax t.handle dim) t))
-  (define (tensor/log-softmax t dim)
-    (_wrap-same (omni-torch-log-softmax t.handle dim) t))
-
-  ;; Element extraction
-  (define (tensor/item t)
-    (omni-torch-item-f64 t.handle))
-  (define (tensor/item-int t)
-    (omni-torch-item-i64 t.handle))
-
-  ;; Memory
-  (define (tensor/free t)
-    (omni-torch-free t.handle))
-  (define (tensor/print t)
-    (omni-torch-print t.handle))
-
-  ;; Utilities
-  (define (tensor? x) (is? x Tensor))
-  (define (tensor/contiguous? t) (= 1 (omni-torch-is-contiguous t.handle)))
-
-  (define (tensor/free-all lst)
-    (if (null? lst) nil
-      (begin (tensor/free (car lst)) (tensor/free-all (cdr lst))))))
+  (export)
+  (import "torch_core.omni")
+  (export-from torch-core :all))
 
 ;; === Dispatch extensions (global scope) ===
 ;; These extend the global +, -, *, / etc. with Tensor methods.
 ;; Must be outside the module so they modify global method tables.
 
-(import torch :all)
+(import torch-core :all)
 (import "ffi/torch.omni" :all)
 
 ;; Tensor + Tensor
@@ -214,6 +29,20 @@
   (_wrap-same (omni-torch-mul-scalar-i a.handle s) a))
 (define (/ (^Tensor a) (^Int s))
   (_wrap-same (omni-torch-div-scalar-i a.handle s) a))
+
+;; Tensor + Double scalar (mixed types via libffi)
+(define (+ (^Tensor a) (^Double s))
+  (_wrap-same (omni-torch-add-scalar-f a.handle s) a))
+(define (- (^Tensor a) (^Double s))
+  (_wrap-same (omni-torch-sub-scalar-f a.handle s) a))
+(define (* (^Tensor a) (^Double s))
+  (_wrap-same (omni-torch-mul-scalar-f a.handle s) a))
+(define (/ (^Tensor a) (^Double s))
+  (_wrap-same (omni-torch-div-scalar-f a.handle s) a))
+
+;; Select along arbitrary dimension
+(define (tensor/select t dim index)
+  (tensor/ensure-contiguous (_wrap (omni-torch-select t.handle dim index))))
 
 ;; Dispatched ref and length
 (define (ref (^Tensor t) (^Int i))

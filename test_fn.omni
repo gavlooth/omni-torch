@@ -1,0 +1,59 @@
+(import "lib/torch.omni" :all)
+
+;; This works at top level
+(define x (tensor/randn '(1 4 8)))
+(define w (* (tensor/randn '(8 8)) 0.02))
+(define r (tensor/matmul x w))
+(println "top-level matmul OK")
+
+;; Does it work inside a function?
+(define (test-fn x w)
+  (tensor/matmul x w))
+
+(define r2 (test-fn x w))
+(println "fn matmul OK")
+
+;; Two matmuls inside function?
+(define (test-fn2 x w)
+  (let (a (tensor/matmul x w)
+        b (tensor/matmul x w))
+    (+ a b)))
+
+(define r3 (test-fn2 x w))
+(println "fn 2 matmuls OK")
+
+;; Many ops inside function?
+(define (test-fn3 x w)
+  (let (q (tensor/matmul x w)
+        k (tensor/matmul x w)
+        v (tensor/matmul x w)
+        kt (tensor/transpose k 1 2)
+        kv (tensor/matmul kt v)
+        out (tensor/matmul q kv))
+    out))
+
+(define r4 (test-fn3 x w))
+(println "fn 6 ops OK")
+
+;; With elu-plus-one?
+(define (elu1 x)
+  (let (ex (tensor/exp x)
+        pos (+ x 1)
+        z (tensor/zeros x.shape)
+        mask (_wrap (omni-torch-gt x.handle z.handle)))
+    (_wrap (omni-torch-where mask.handle pos.handle ex.handle))))
+
+(define r5 (elu1 x))
+(println "fn elu OK")
+
+;; elu inside attention?
+(define (test-fn4 x w)
+  (let (q (elu1 (tensor/matmul x w))
+        k (elu1 (tensor/matmul x w))
+        v (tensor/matmul x w))
+    (tensor/matmul q v)))
+
+(define r6 (test-fn4 x w))
+(println "fn elu+matmul OK")
+
+(println "ALL PASSED")

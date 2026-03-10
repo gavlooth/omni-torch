@@ -1,0 +1,250 @@
+(import "executor_types.omni")
+(import executor-types :all)
+
+(define (executor/_ctx max-threads memory-limit-bytes timeout-ms timeout-check-interval-ms cancelled timeout-elapsed-ms heartbeat next-op-id memory-usage-bytes peak-memory-bytes op-events diagnostics op-timings op-memories)
+  (ExecutionContext max-threads
+                   memory-limit-bytes
+                   timeout-ms
+                   timeout-check-interval-ms
+                   cancelled
+                   timeout-elapsed-ms
+                   heartbeat
+                   next-op-id
+                   memory-usage-bytes
+                   peak-memory-bytes
+                   op-events
+                   diagnostics
+                   op-timings
+                   op-memories))
+
+(define (executor/context-new)
+  (executor/_ctx 4 0 0 1 false 0 0 1 0 0 '() '() '() '()))
+
+(define (executor/context-update-limits ctx max-threads memory-limit-bytes)
+  (executor/_ctx max-threads
+                 memory-limit-bytes
+                 ctx.timeout-ms
+                 ctx.timeout-check-interval-ms
+                 ctx.cancelled
+                 ctx.timeout-elapsed-ms
+                 ctx.heartbeat
+                 ctx.next-op-id
+                 ctx.memory-usage-bytes
+                 ctx.peak-memory-bytes
+                 ctx.op-events
+                 ctx.diagnostics
+                 ctx.op-timings
+                 ctx.op-memories))
+
+(define (executor/context-update-timeout ctx timeout-ms timeout-check-interval-ms)
+  (executor/_ctx ctx.max-threads
+                 ctx.memory-limit-bytes
+                 timeout-ms
+                 timeout-check-interval-ms
+                 ctx.cancelled
+                 ctx.timeout-elapsed-ms
+                 ctx.heartbeat
+                 ctx.next-op-id
+                 ctx.memory-usage-bytes
+                 ctx.peak-memory-bytes
+                 ctx.op-events
+                 ctx.diagnostics
+                 ctx.op-timings
+                 ctx.op-memories))
+
+(define (executor/context-tick ctx)
+  (executor/_ctx ctx.max-threads
+                 ctx.memory-limit-bytes
+                 ctx.timeout-ms
+                 ctx.timeout-check-interval-ms
+                 ctx.cancelled
+                 (+ ctx.timeout-elapsed-ms
+                    (if (> ctx.timeout-ms 0)
+                      (executor/_timeout-step ctx)
+                      0))
+                 (+ ctx.heartbeat 1)
+                 ctx.next-op-id
+                 ctx.memory-usage-bytes
+                 ctx.peak-memory-bytes
+                 ctx.op-events
+                 ctx.diagnostics
+                 ctx.op-timings
+                 ctx.op-memories))
+
+(define (executor/context-check-cancelled ctx)
+  (if ctx.cancelled
+    (error "execution context is cancelled")
+    ctx))
+
+(define (executor/context-cancelled? ctx)
+  ctx.cancelled)
+
+(define (executor/context-check-timeout ctx)
+  (if (<= ctx.timeout-ms 0)
+    ctx
+    (if (> ctx.timeout-elapsed-ms ctx.timeout-ms)
+      (error (format "executor context timeout: elapsed_ms=%d limit_ms=%d"
+                     ctx.timeout-elapsed-ms
+                     ctx.timeout-ms))
+      ctx)))
+
+(define (executor/context-check-blocking-state ctx)
+  (executor/context-check-timeout
+    (executor/context-check-cancelled ctx)))
+
+(define (executor/context-cancel ctx)
+  (executor/_ctx ctx.max-threads
+                 ctx.memory-limit-bytes
+                 ctx.timeout-ms
+                 ctx.timeout-check-interval-ms
+                 true
+                 ctx.timeout-elapsed-ms
+                 ctx.heartbeat
+                 ctx.next-op-id
+                 ctx.memory-usage-bytes
+                 ctx.peak-memory-bytes
+                 ctx.op-events
+                 (executor/_append-1 ctx.diagnostics (Diagnostic "cancel" "execution cancelled" "executor" 0))
+                 ctx.op-timings
+                 ctx.op-memories))
+
+(define (executor/context-op-events ctx)
+  ctx.op-events)
+
+(define (executor/context-op-count ctx)
+  (length ctx.op-events))
+
+(define (executor/context-diagnostics ctx)
+  ctx.diagnostics)
+
+(define (executor/context-diagnostic-count ctx)
+  (length ctx.diagnostics))
+
+(define (executor/context-timings ctx)
+  ctx.op-timings)
+
+(define (executor/context-op-memories ctx)
+  ctx.op-memories)
+
+(define (executor/context-memory-usage ctx)
+  ctx.memory-usage-bytes)
+
+(define (executor/context-peak-memory ctx)
+  ctx.peak-memory-bytes)
+
+(define (executor/context-append-diagnostic ctx severity message source)
+  (executor/_ctx ctx.max-threads
+                 ctx.memory-limit-bytes
+                 ctx.timeout-ms
+                 ctx.timeout-check-interval-ms
+                 ctx.cancelled
+                 ctx.timeout-elapsed-ms
+                 ctx.heartbeat
+                 ctx.next-op-id
+                 ctx.memory-usage-bytes
+                 ctx.peak-memory-bytes
+                 ctx.op-events
+                 (executor/_append-1 ctx.diagnostics (Diagnostic severity message source 0))
+                 ctx.op-timings
+                 ctx.op-memories))
+
+(define (executor/context-append-op-diagnostic ctx severity message source op-id)
+  (executor/_ctx ctx.max-threads
+                 ctx.memory-limit-bytes
+                 ctx.timeout-ms
+                 ctx.timeout-check-interval-ms
+                 ctx.cancelled
+                 ctx.timeout-elapsed-ms
+                 ctx.heartbeat
+                 ctx.next-op-id
+                 ctx.memory-usage-bytes
+                 ctx.peak-memory-bytes
+                 ctx.op-events
+                 (executor/_append-1 ctx.diagnostics (Diagnostic severity message source op-id))
+                 ctx.op-timings
+                 ctx.op-memories))
+
+(define (executor/context-execution-report ctx)
+  (ExecutionReport ctx.heartbeat
+                   ctx.timeout-elapsed-ms
+                   ctx.timeout-ms
+                   ctx.timeout-check-interval-ms
+                   (executor/context-op-count ctx)
+                   (executor/context-diagnostic-count ctx)
+                   ctx.cancelled
+                   ctx.next-op-id
+                   ctx.memory-usage-bytes
+                   ctx.peak-memory-bytes
+                   ctx.op-memories
+                   ctx.op-events
+                   ctx.diagnostics
+                   ctx.op-timings))
+
+(define (executor/execution-report->sexpr report)
+  (list report.heartbeat
+        report.timeout-elapsed-ms
+        report.timeout-ms
+        report.timeout-check-interval-ms
+        report.op-count
+        report.diagnostic-count
+        report.cancelled
+        report.next-op-id
+        report.memory-usage-bytes
+        report.peak-memory-bytes
+        report.op-memories
+        report.op-events
+        report.diagnostics
+        report.op-timings))
+
+(define (executor/context-start-op ctx op-name)
+  (let (checked (executor/context-check-blocking-state ctx))
+    (let (op-id checked.next-op-id
+          memory-reserve (executor/_op-memory-bytes op-name)
+          memory-after (+ checked.memory-usage-bytes (executor/_op-memory-bytes op-name)))
+      (if (and (> checked.memory-limit-bytes 0)
+               (> memory-after checked.memory-limit-bytes))
+        (error (format "executor memory limit exceeded: memory=%d limit=%d"
+                       memory-after
+                       checked.memory-limit-bytes))
+        (let (started (OpEvent op-id (if op-name op-name "op") "start" "in-progress" true))
+          (list op-id
+                (executor/_ctx checked.max-threads
+                               checked.memory-limit-bytes
+                               checked.timeout-ms
+                               checked.timeout-check-interval-ms
+                               checked.cancelled
+                               checked.timeout-elapsed-ms
+                               (+ checked.heartbeat 1)
+                               (+ checked.next-op-id 1)
+                               memory-after
+                               (executor/_max checked.peak-memory-bytes memory-after)
+                               (executor/_append-1 checked.op-events started)
+                               checked.diagnostics
+                               checked.op-timings
+                               checked.op-memories))))))
+
+(define (executor/context-finish-op ctx op-id op-name status)
+  (let (checked (executor/context-check-blocking-state ctx))
+    (let (reserve (executor/_op-memory-bytes op-name)
+          memory-before (executor/_safe-sub checked.memory-usage-bytes (executor/_op-memory-bytes op-name))
+          memory-after (executor/_safe-sub checked.memory-usage-bytes (executor/_op-memory-bytes op-name))
+          finished (OpEvent op-id (if op-name op-name "op") "finish" (if status status "ok") false))
+      (executor/_ctx checked.max-threads
+                     checked.memory-limit-bytes
+                     checked.timeout-ms
+                     checked.timeout-check-interval-ms
+                     checked.cancelled
+                     checked.timeout-elapsed-ms
+                     (+ checked.heartbeat 1)
+                     checked.next-op-id
+                     memory-after
+                     checked.peak-memory-bytes
+                     (executor/_append-1 checked.op-events finished)
+                     checked.diagnostics
+                     (if (> op-id 0)
+                       (executor/_append-1 checked.op-timings (OpTiming op-id 1 (if op-name op-name "")))
+                       checked.op-timings)
+                     (if (> op-id 0)
+                       (executor/_append-1 checked.op-memories
+                         (OpMemory op-id reserve memory-before memory-after (if op-name op-name "")))
+                       checked.op-memories)))))

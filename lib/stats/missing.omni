@@ -1,0 +1,90 @@
+;; Missing-value-aware statistics helpers.
+
+(module stats.missing
+  (export missing/count missing/count-dim missing/sum missing/sum-dim
+          missing/minimum missing/minimum-dim missing/maximum missing/maximum-dim
+          missing/mean missing/mean-dim missing/variance missing/variance-dim
+          missing/std missing/std-dim)
+
+  (import "../torch.omni" :all)
+
+  (define (_replace-missing-with value nan-replace posinf-replace neginf-replace)
+    (let (x (tensor/clone (if (= value.dtype torch/float64)
+                              value
+                              (tensor/to-dtype value torch/float64))))
+      (tensor/fill-missing-inplace x nan-replace posinf-replace neginf-replace)
+      x))
+
+  (define (missing/count value)
+    (tensor/item-int (tensor/sum (tensor/is-finite value))))
+
+  (define (missing/_validate-dim source dim)
+    (let (axis (if (< dim 0) (+ dim source.ndim) dim))
+      (if (or (< axis 0) (>= axis source.ndim))
+        (error "missing/_validate-dim requires dim in range [-ndim, ndim-1]")
+        axis)))
+
+  (define (missing/_maybe-keepdim source dim keep-dim value)
+    (if keep-dim
+      (tensor/unsqueeze value (missing/_validate-dim source dim))
+      value))
+
+  (define (missing/count-dim value dim keep-dim)
+    (missing/_maybe-keepdim value dim keep-dim (tensor/sum-dim (tensor/is-finite value) dim)))
+
+  (define (missing/sum value)
+    (tensor/sum (_replace-missing-with value 0.0 0.0 0.0)))
+
+  (define (missing/sum-dim value dim keep-dim)
+    (missing/_maybe-keepdim value dim keep-dim
+      (tensor/sum-dim (_replace-missing-with value 0.0 0.0 0.0) dim)))
+
+  (define (missing/minimum value)
+    (tensor/min-val (_replace-missing-with value (/ 1.0 0.0) (/ 1.0 0.0) (/ 1.0 0.0))))
+
+  (define (missing/minimum-dim value dim keep-dim)
+    (missing/_maybe-keepdim value dim keep-dim
+      (tensor/min-dim (_replace-missing-with value (/ 1.0 0.0) (/ 1.0 0.0) (/ 1.0 0.0))
+                      dim)))
+
+  (define (missing/maximum value)
+    (tensor/max-val (_replace-missing-with value (- (/ 1.0 0.0)) (- (/ 1.0 0.0)) (- (/ 1.0 0.0)))))
+
+  (define (missing/maximum-dim value dim keep-dim)
+    (missing/_maybe-keepdim value dim keep-dim
+      (tensor/max-dim (_replace-missing-with value (- (/ 1.0 0.0)) (- (/ 1.0 0.0)) (- (/ 1.0 0.0))) dim)))
+
+  (define (missing/mean value)
+    (let (finite (missing/count value)
+          x (_replace-missing-with value 0.0 0.0 0.0))
+      (if (= finite 0)
+        (error "missing/mean requires at least one finite value")
+        (/ (tensor/sum x) finite))))
+
+  (define (missing/mean-dim value dim keep-dim)
+    (let (axis (missing/_validate-dim value dim))
+      (missing/_maybe-keepdim value dim keep-dim
+        (/ (tensor/sum-dim (_replace-missing-with value 0.0 0.0 0.0) axis)
+           (tensor/sum-dim (tensor/is-finite value) axis)))))
+
+  (define (missing/variance value)
+    (let (finite (missing/count value)
+          x (_replace-missing-with value 0.0 0.0 0.0)
+          (m (missing/mean value)))
+      (if (= finite 0)
+        (error "missing/variance requires at least one finite value")
+        (/ (tensor/sum (tensor/pow (- x m) 2)) finite))))
+
+  (define (missing/variance-dim value dim keep-dim)
+    (let (axis (missing/_validate-dim value dim)
+          (m (missing/mean-dim value axis true)))
+      (missing/_maybe-keepdim value dim keep-dim
+        (/ (tensor/sum-dim (tensor/pow (- (_replace-missing-with value 0.0 0.0 0.0) m) 2) axis)
+           (tensor/sum-dim (tensor/is-finite value) axis)))))
+
+  (define (missing/std value)
+    (sqrt (missing/variance value)))
+
+  (define (missing/std-dim value dim keep-dim)
+    (sqrt (missing/variance-dim value dim keep-dim)))
+)

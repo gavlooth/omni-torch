@@ -1,0 +1,59 @@
+;; Statistics association helpers built on top of tensor covariance/correlation.
+
+(module stats.association
+  (export association/covariance association/covariance-dim
+          association/correlation association/correlation-dim)
+
+  (import "../torch.omni" :all)
+
+  (define (association/_as-accumulation-tensor t)
+    (if (= t.dtype torch/float64)
+      t
+      (tensor/to-dtype t torch/float64)))
+
+  (define (association/_normalize-dim a b dim)
+    (if (<> a.ndim b.ndim)
+      (error "association/covariance-dim requires matching rank")
+      (let (axis (if (< dim 0) (+ dim a.ndim) dim))
+        (if (or (< axis 0) (>= axis a.ndim))
+          (error "association/covariance-dim requires dim in range [-ndim, ndim-1]")
+          (if (<> (ref a.shape axis) (ref b.shape axis))
+            (error "association/covariance-dim requires matching dimension sizes")
+            axis)))))
+
+  (define (association/_maybe-keepdim source axis keep-dim value)
+    (if keep-dim
+      (tensor/unsqueeze value axis)
+      value))
+
+  (define (association/covariance a b)
+    (tensor/covariance a b))
+
+  (define (association/covariance-dim a b dim keep-dim)
+    (let (axis (association/_normalize-dim a b dim))
+      (if (< (ref a.shape axis) 2)
+        (error "association/covariance-dim requires at least 2 elements on dim")
+        (let (a64 (association/_as-accumulation-tensor a)
+              b64 (association/_as-accumulation-tensor b)
+              da (- a64 (tensor/mean-dim a64 axis true))
+              db (- b64 (tensor/mean-dim b64 axis true)))
+          (association/_maybe-keepdim a axis keep-dim
+            (/ (tensor/sum-dim (tensor/mul da db) axis)
+               (- (ref a.shape axis) 1))))))
+
+  (define (association/correlation a b)
+    (tensor/correlation a b))
+
+  (define (association/correlation-dim a b dim keep-dim)
+    (let (axis (association/_normalize-dim a b dim))
+      (if (< (ref a.shape axis) 2)
+        (error "association/correlation-dim requires at least 2 elements on dim")
+        (let (a64 (association/_as-accumulation-tensor a)
+              b64 (association/_as-accumulation-tensor b)
+              da (- a64 (tensor/mean-dim a64 axis true))
+              db (- b64 (tensor/mean-dim b64 axis true))
+              num (tensor/sum-dim (tensor/mul da db) axis)
+              den (sqrt (tensor/mul (tensor/std-dim a64 axis)
+                                   (tensor/std-dim b64 axis))))
+          (association/_maybe-keepdim a axis keep-dim (/ num den)))))
+)

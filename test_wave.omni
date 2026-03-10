@@ -1,0 +1,62 @@
+(import "lib/torch.omni" :all)
+(define DIM 8)
+(define SEQ 4)
+
+(define (spectral-lap u sl)
+  (let (uh (_wrap (omni-torch-fft-rfft u.handle 1))
+        fr (_wrap (omni-torch-fft-fftfreq sl))
+        k2 (tensor/neg (tensor/pow fr 2))
+        nf (+ (/ sl 2) 1)
+        kb (tensor/reshape k2 (list 1 nf 1))
+        sc (_wrap (omni-torch-mul uh.handle kb.handle))
+        r  (_wrap (omni-torch-fft-irfft sc.handle sl 1)))
+    r))
+
+(define u (tensor/randn (list 1 SEQ DIM)))
+(println "u OK")
+
+;; spectral-lap top level
+(define lap1 (spectral-lap u SEQ))
+(println "spectral-lap top OK")
+
+;; spectral-lap inside function
+(define (test-lap u sl)
+  (spectral-lap u sl))
+
+(define lap2 (test-lap u SEQ))
+(println "spectral-lap nested OK")
+
+;; Two calls
+(define (test-lap2 u sl)
+  (let (a (spectral-lap u sl)
+        b (spectral-lap u sl))
+    (+ a b)))
+
+(define lap3 (test-lap2 u SEQ))
+(println "2x spectral-lap OK")
+
+;; Full wave step
+(define c-seed (tensor/randn (list 1 1 DIM)))
+(define g-seed (tensor/randn (list 1 1 DIM)))
+(define c (_wrap (omni-torch-softplus c-seed.handle)))
+(define g (_wrap (omni-torch-softplus g-seed.handle)))
+(define v (tensor/zeros u.shape))
+
+(define (wave-step u v c g dt sl)
+  (let (lap (spectral-lap u sl)
+        acc (- (* (* c c) lap) (* g v))
+        vh (+ v (* acc (* dt 0.5)))
+        un (+ u (* vh dt))
+        l2 (spectral-lap un sl)
+        a2 (- (* (* c c) l2) (* g vh))
+        vn (+ vh (* a2 (* dt 0.5))))
+    (list un vn)))
+
+(define r (wave-step u v c g 0.1 SEQ))
+(println "wave-step OK")
+
+;; Two steps (loop)
+(define r2 (wave-step (car r) (car (cdr r)) c g 0.1 SEQ))
+(println "2 wave-steps OK")
+
+(println "ALL WAVE OK")

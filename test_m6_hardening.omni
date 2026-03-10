@@ -1,0 +1,281 @@
+;; M6 hardening tests: shape mismatch negatives + mixed finite/non-finite behavior.
+
+(import "lib/torch.omni" :all)
+(import "lib/ffi/torch.omni" :all)
+(import "lib/data/clean.omni" :all)
+(import "lib/data/pipeline.omni" :all)
+(import "lib/data/split.omni" :all)
+
+(define (pass msg)
+  (println (string-append msg " OK")))
+
+(define (assert-eq msg got expected)
+  (if (= got expected)
+    (pass msg)
+    (error (string-append "FAIL: " msg))))
+
+(define (assert-true msg pred)
+  (if pred
+    (pass msg)
+    (error (string-append "FAIL: " msg))))
+
+(define (assert-ffi-fails msg handle)
+  (if (= handle 0)
+    (pass msg)
+    (error (format "FAIL: %s expected backend error, got handle %d" msg handle))))
+
+(define (assert-ffi-succeeds msg handle)
+  (if (= handle 0)
+    (error (format "FAIL: %s expected success, got backend error: %s" msg (omni-torch-last-error)))
+    (pass msg)))
+
+(println "=== M6 hardening: shape mismatch negative tests ===")
+
+(define a (tensor/rand '(2 3)))
+(define b (tensor/rand '(4 2)))
+(define c (tensor/rand '(3 4)))
+(define d (tensor/rand '(5)))
+
+(assert-ffi-fails "matmul requires matching inner dimensions" (omni-torch-matmul a.handle b.handle))
+(assert-ffi-fails "mm requires 2D input pair with compatible dimensions" (omni-torch-mm a.handle b.handle))
+(assert-ffi-fails "mv requires vector length matching matrix inner dimension" (omni-torch-mv a.handle d))
+(assert-ffi-fails "dot requires 1D operands" (omni-torch-dot a.handle c))
+
+(assert-ffi-fails "mean-dim rejects invalid dimension index" (omni-torch-mean-dim a.handle 2))
+(assert-ffi-fails "sum-dim rejects invalid dimension index" (omni-torch-sum-dim a.handle 99))
+(assert-ffi-fails "reshape-2d rejects incompatible sizes" (omni-torch-reshape-2d a.handle 2 2))
+(assert-ffi-fails "slice rejects invalid dimension index" (omni-torch-slice a.handle 2 0 1))
+(assert-ffi-fails "select rejects out-of-range row index" (omni-torch-select a.handle 0 1000))
+(assert-ffi-fails "transpose rejects invalid dim" (omni-torch-transpose a.handle 0 3))
+
+(assert-ffi-fails "cat rejects invalid concat dim" (omni-torch-cat-2 a.handle c.handle 2))
+(assert-ffi-fails "stack rejects invalid concat dim" (omni-torch-stack-2 a.handle c.handle 2))
+(assert-ffi-fails "histogram rejects non-positive bins" (omni-torch-histogram d.handle 0 0.0 1.0))
+(assert-ffi-fails "histogram rejects descending bounds" (omni-torch-histogram d.handle 3 2.0 1.0))
+(assert-ffi-fails "quantile rejects out-of-range quantile" (omni-torch-quantile d.handle 1.1))
+(assert-ffi-fails "quantile-dim rejects invalid dim" (omni-torch-quantile-dim a.handle 0.5 2))
+(assert-ffi-fails "median-dim rejects invalid dim" (omni-torch-median-dim a.handle 2))
+
+(assert-ffi-fails "covariance rejects incompatible tensors" (omni-torch-covariance a.handle d.handle))
+(assert-ffi-fails "correlation rejects incompatible tensors" (omni-torch-correlation c.handle d.handle))
+
+(tensor/free-all (list a b c d))
+
+(println "=== M6 hardening: mixed finite/non-finite missing-value behavior ===")
+
+(define base (tensor/arange 1 5 1))
+(define one (tensor/ones '(1)))
+(define pos-inf (/ one 0.0))
+(define neg-inf (- pos-inf))
+(define nan (/ pos-inf pos-inf))
+(define mixed-1 (tensor/cat base pos-inf 0))
+(define mixed-2 (tensor/cat nan neg-inf 0))
+(define mixed (tensor/cat mixed-1 mixed-2 0))
+
+(assert-eq "missing count reports only finite elements" (stats/missing/count mixed) 4)
+(assert-true "mixed input has non-finite values"
+             (< (stats/missing/count mixed) mixed.numel))
+(assert-eq "missing sum ignores non-finite values" (tensor/item-int (stats/missing/sum mixed)) 10)
+(assert-true "missing minimum ignores missing-like values"
+             (= (tensor/item-int (stats/missing/minimum mixed)) 1))
+(assert-true "missing maximum ignores missing-like values"
+             (= (tensor/item-int (stats/missing/maximum mixed)) 4))
+(assert-true "missing mean excludes non-finite values"
+             (< (abs (- (tensor/item (stats/missing/mean mixed)) 2.5)) 1e-6))
+
+(define mixed-single-finite (tensor/cat (tensor/ones '(1)) (tensor/cat pos-inf pos-inf 0) 0))
+(assert-true "missing variance handles single finite + non-finite case"
+             (< (abs (tensor/item (stats/missing/variance mixed-single-finite))) 1e-6))
+
+(define clean-const (clean/replace-missing-constant mixed 7.0))
+(define clean-mean (clean/replace-missing-mean mixed))
+
+(assert-eq "replace-missing-constant produces fully finite output" (stats/missing/count clean-const) mixed.numel)
+(assert-eq "replace-missing-mean produces fully finite output" (stats/missing/count clean-mean) mixed.numel)
+(assert-true "replace-missing-mean sum equals expected finite replacement"
+             (< (abs (- (tensor/item (stats/missing/sum clean-mean)) 17.5)) 1e-6))
+
+(tensor/free-all (list base one pos-inf neg-inf nan mixed-1 mixed-2 mixed
+                    mixed-single-finite clean-const clean-mean))
+
+(println "=== M6 hardening: data cleanup smoke checks ===")
+
+(define row-a (tensor/arange 1 3 1))
+(define row-b (tensor/arange 3 5 1))
+(define dup-input (tensor/cat (tensor/unsqueeze row-a 0)
+                             (tensor/cat (tensor/unsqueeze row-a 0)
+                                         (tensor/unsqueeze row-b 0)
+                                         0)
+                             0))
+
+(define duplicate-indices (clean/duplicate-row-indices dup-input))
+(assert-true "duplicate-row-indices finds repeated rows" (<> duplicate-indices nil))
+
+(define deduped (clean/remove-duplicate-rows dup-input))
+(assert-eq "remove-duplicate-rows reduces row count" (ref deduped.shape 0) 2)
+
+(define clean-clip (clean/clip (tensor/arange -3 4 1) -1.0 1.0))
+(assert-true "clip upper bound is respected" (<= (tensor/item (tensor/max-val clean-clip)) 1.0))
+(assert-true "clip lower bound is respected" (>= (tensor/item (tensor/min-val clean-clip)) -1.0))
+
+(define clean-clip-quantile (clean/clip-quantile (tensor/arange -3 4 1) 0.25 0.75))
+(assert-eq "clip-quantile preserves rank" clean-clip-quantile.ndim 1)
+(assert-eq "clip-quantile preserves numel" clean-clip-quantile.numel 7)
+(assert-eq "clip-quantile returns fully finite output" (stats/missing/count clean-clip-quantile) clean-clip-quantile.numel)
+
+(println "=== M6 hardening: statistics function coverage (newly added ops) ===")
+
+(define stats-base (tensor/arange 1 6 1))
+(assert-eq "describe/count works on vector" (stats/describe/count stats-base) 5)
+(assert-eq "describe/minimum works" (tensor/item-int (stats/describe/minimum stats-base)) 1)
+(assert-eq "describe/maximum works" (tensor/item-int (stats/describe/maximum stats-base)) 5)
+(assert-true "describe/mean non-zero" (> (tensor/item (stats/describe/mean stats-base)) 0.0))
+
+(define describe-var-dim (stats/describe/variance-dim stats-base 0 true))
+(define describe-std-dim (stats/describe/std-dim stats-base 0 true))
+(assert-eq "describe/variance-dim keep-dim check" describe-var-dim.ndim 1)
+(assert-eq "describe/std-dim shape is preserved with keep-dim" describe-std-dim.ndim 1)
+
+(define robust-median-dim (stats/robust/median-dim stats-base 0 true))
+(define robust-quantile-dim (stats/robust/quantile-dim stats-base 0.5 0 true))
+(define robust-iqr-dim (stats/robust/interquartile-range-dim stats-base 0 true))
+(define robust-mad-dim (stats/robust/median-absolute-deviation-dim stats-base 0 true))
+(assert-true "robust/median-dim keep-dim check"
+             (= robust-median-dim.ndim 1))
+(assert-true "robust/quantile-dim keep-dim check"
+             (= robust-quantile-dim.ndim 1))
+(assert-true "robust/IQR-dim keep-dim check"
+             (= robust-iqr-dim.ndim 1))
+(assert-true "robust/MAD-dim keep-dim check"
+             (= robust-mad-dim.ndim 1))
+
+(define robust-q2 (stats/robust/quantile stats-base 0.5))
+(assert-eq "robust/quantile returns expected median" (tensor/item-int robust-q2) 3)
+
+(define assoc-a (tensor/arange 1 6 1))
+(define assoc-b (tensor/arange 2 7 1))
+(define assoc-cov-dim (stats/association/covariance-dim assoc-a assoc-a 0 true))
+(define assoc-corr-dim (stats/association/correlation-dim assoc-a assoc-a 0 true))
+(assert-true "association covariance outputs scalar for vectors" (= (stats/association/covariance-dim assoc-a assoc-a 0 true).ndim 1))
+(assert-true "association covariance outputs scalar for vectors" (= assoc-cov-dim.ndim 1))
+(assert-true "association correlation outputs scalar for vectors" (= assoc-corr-dim.ndim 1))
+(assert-true "association correlation of identical vectors should be finite"
+             (not (= (tensor/item (stats/association/correlation-dim assoc-a assoc-a 0) 0.0)))
+
+(define skew1 (stats/distribution/skewness stats-base))
+(define kurt1 (stats/distribution/kurtosis stats-base))
+(define skew1-dim (stats/distribution/skewness-dim stats-base 0 true))
+(define kurt1-dim (stats/distribution/kurtosis-dim stats-base 0 true))
+(assert-true "distribution skewness is available" (= (tensor/item skew1) (tensor/item skew1)))
+(assert-true "distribution kurtosis is available" (= (tensor/item kurt1) (tensor/item kurt1)))
+(assert-true "distribution skewness dim has keep-dim axis"
+             (= skew1-dim.ndim 1))
+(assert-true "distribution kurtosis dim has keep-dim axis"
+             (= kurt1-dim.ndim 1))
+
+(define mixed-hist (stats/distribution/histogram stats-base 4 1.0 5.0))
+(assert-eq "distribution/histogram returns 1d output" mixed-hist.ndim 1)
+(assert-eq "distribution/histogram preserves finite count" (stats/missing/count mixed-hist) mixed-hist.numel)
+
+(define missing-count-dim (stats/missing/count-dim stats-base 0 true))
+(define missing-mean-dim (stats/missing/mean-dim stats-base 0 true))
+(define missing-variance-dim (stats/missing/variance-dim stats-base 0 true))
+(assert-eq "missing/count-dim keeps reduced rank when requested" missing-count-dim.ndim 1)
+(assert-true "missing/mean-dim keep-dim check" (= missing-mean-dim.ndim 1))
+(assert-true "missing/variance-dim keep-dim check" (= missing-variance-dim.ndim 1))
+
+(println "=== M6 hardening: cleanup strategy matrix checks ===")
+
+(define clean-missing (tensor/reshape (tensor/cat (tensor/arange 1 3 1) (tensor/cat nan nan 0) 0) '(2 2)))
+(define clean-missing-med (clean/replace-missing-median clean-missing))
+(define clean-missing-mode (clean/replace-missing-most-frequent clean-missing))
+(assert-eq "replace-missing-median keeps shape" clean-missing-med.ndim clean-missing.ndim)
+(assert-eq "replace-missing-most-frequent keeps shape" clean-missing-mode.ndim clean-missing.ndim)
+(assert-eq "replace-missing-median fully finite" (stats/missing/count clean-missing-med) clean-missing-med.numel)
+(assert-eq "replace-missing-most-frequent fully finite" (stats/missing/count clean-missing-mode) clean-missing-mode.numel)
+
+(define out-z (clean/detect-outliers-z-score (tensor/reshape (tensor/arange 1 6 1) '(1 5)) 2.0))
+(assert-eq "z-score outlier output shape" out-z.ndim 2)
+(assert-eq "z-score outlier output numel" out-z.numel 5)
+
+(define out-qr (clean/detect-outliers-iqr (tensor/reshape (tensor/arange 1 6 1) '(1 5))))
+(assert-eq "iqr outlier output shape" out-qr.ndim 2)
+(assert-eq "iqr outlier output numel" out-qr.numel 5)
+
+(define labels (tensor/reshape (tensor/arange 1 6 1) '(5 1)))
+(define remap-output (clean/remap-class-labels labels))
+(define remapped-labels (car remap-output))
+(define class-catalog (car (cdr remap-output)))
+(assert-eq "remap class output shape" remapped-labels.shape labels.shape)
+(assert-eq "remap class catalog count" class-catalog.ndim 1)
+
+(define class-dist (clean/class-distribution-report (tensor/arange 1 6 1)))
+(assert-eq "class distribution report has values and counts" (length class-dist) 2)
+(define class-dist-values (car class-dist))
+(assert-eq "class distribution values vector" class-dist-values.ndim 1)
+
+(define profile-before (clean/feature-profile-before-cleanup clean-missing))
+(define profile-after (clean/feature-profile-after-cleanup clean-missing-med))
+(assert-eq "feature profile reports expected number of metrics before" (length profile-before) 7)
+(assert-eq "feature profile reports expected number of metrics after" (length profile-after) 7)
+
+(assert-true "clean/validate-clean-target succeeds on matrix" (clean/validate-clean-target clean-missing))
+
+(println "=== M6 hardening: pipeline and split integration checks ===")
+
+(define (pipeline-step-clip t)
+  (clean/clip t -2.0 2.0))
+
+(define (pipeline-step-fill t)
+  (clean/replace-missing-mean t))
+
+(define split-data (tensor/reshape (tensor/arange 1 31 1) '(6 5)))
+(define split-train-val (split/train-validation split-data 4 2))
+(define split-train (car split-train-val))
+(define split-val (car (cdr split-train-val)))
+
+(assert-eq "split/train-validation returns requested train rows" (ref split-train.shape 0) 4)
+(assert-eq "split/train-validation returns requested validation rows" (ref split-val.shape 0) 2)
+(assert-eq "split/train-validation preserves feature width" (ref split-train.shape 1) 5)
+(assert-true "split/train-validation partition size adds up to split total"
+             (= (+ split-train.numel split-val.numel) split-data.numel))
+
+(define train-with-steps (pipeline/with-step (pipeline/with-step (pipeline/new) pipeline-step-clip) pipeline-step-fill))
+(define pipeline-fitted (pipeline/fit train-with-steps split-train))
+(assert-true "pipeline/fit marks pipeline as fitted" (pipeline/fitted? pipeline-fitted))
+(assert-eq "pipeline/fit stores matching fitted feature width" pipeline-fitted.fit-columns 5)
+
+(define split-train-transformed (pipeline/transform pipeline-fitted split-train))
+(define split-train-ff (pipeline/fit-transform train-with-steps split-train))
+(assert-true "pipeline transform output is finite for train partition" (= (stats/missing/count split-train-transformed) split-train-transformed.numel))
+(assert-true "pipeline fit-transform output is finite for train partition" (= (stats/missing/count split-train-ff) split-train-ff.numel))
+(assert-eq "pipeline fit-transform preserves transformed ndim"
+           split-train-ff.ndim split-train-transformed.ndim)
+(assert-eq "pipeline fit-transform preserves transformed numel"
+           split-train-ff.numel split-train-transformed.numel)
+
+(define split-train-sum (tensor/item (tensor/sum split-train-transformed)))
+(define split-train-ff-sum (tensor/item (tensor/sum split-train-ff)))
+(assert-true "pipeline fit-transform and fit/transform sums match on train partition"
+             (< (abs (- split-train-sum split-train-ff-sum)) 1e-6))
+
+(define pipeline-state (pipeline/serialize pipeline-fitted))
+(define pipeline-restored (pipeline/deserialize pipeline-state))
+(define split-val-transformed (pipeline/transform pipeline-fitted split-val))
+(define split-val-restored (pipeline/transform pipeline-restored split-val))
+(assert-true "pipeline checkpoint restore output is fitted" (pipeline/fitted? pipeline-restored))
+(assert-eq "pipeline checkpoint restores all stages" (length (pipeline/stages pipeline-restored)) 2)
+(assert-true "pipeline checkpoint restore output is finite" (= (stats/missing/count split-val-restored) split-val-restored.numel))
+(assert-true "pipeline checkpoint restore output matches fitted transform"
+             (< (abs (- (tensor/item (tensor/sum split-val-restored))
+                        (tensor/item (tensor/sum split-val-transformed)))
+                   1e-6))
+
+(tensor/free-all (list row-a row-b dup-input deduped clean-clip clean-clip-quantile
+                     stats-base robust-q2 skew1 kurt1 mixed-hist
+                     assoc-a assoc-b out-z out-qr labels remapped-labels class-catalog
+                     clean-missing clean-missing-med clean-missing-mode
+                     split-data split-train split-val split-train-transformed
+                     split-train-ff split-val-transformed split-val-restored))
+
+(println "=== M6 hardening tests PASSED ===")
