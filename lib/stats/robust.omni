@@ -6,7 +6,7 @@
           robust/interquartile-range robust/interquartile-range-dim
           robust/median-absolute-deviation robust/median-absolute-deviation-dim)
 
-  (import "../torch.omni" :all)
+  (import "../torch.omni" 'all)
 
   (define (robust/_maybe-keepdim source dim keep-dim value)
     (if keep-dim

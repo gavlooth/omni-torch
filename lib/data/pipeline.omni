@@ -14,7 +14,7 @@
           pipeline/fitted?
           Pipeline)
 
-  (import "../torch.omni" :all)
+  (import "../torch.omni" 'all)
 
   (define [type] Pipeline
     (^List steps)

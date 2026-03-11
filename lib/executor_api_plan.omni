@@ -1,5 +1,5 @@
 (import "executor_types.omni")
-(import executor-types :all)
+(import executor-types 'all)
 
 (define (executor/operator op-id kind name inputs args blocking)
   (Operator op-id kind name inputs args blocking))

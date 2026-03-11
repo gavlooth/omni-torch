@@ -39,7 +39,7 @@
           stats/missing/std stats/missing/std-dim
           _wrap _wrap-same)
 
-  (import "ffi/torch.omni" :all)
+  (import "ffi/torch.omni" 'all)
 
   (define torch/float32 6)
   (define torch/float64 7)
@@ -254,7 +254,7 @@
 
   (define (tensor/free-all lst)
     (if (null? lst) nil
-      (begin (tensor/free (car lst)) (tensor/free-all (cdr lst)))))
+      (block (tensor/free (car lst)) (tensor/free-all (cdr lst)))))
 
   (define (tensor/zeros-like t) (_wrap (omni-torch-zeros-like t.handle)))
   (define (tensor/ones-like t) (_wrap (omni-torch-ones-like t.handle)))

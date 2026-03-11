@@ -21,7 +21,7 @@
           executor/context-peak-memory
           executor/execution-report->sexpr)
   (import "executor_types.omni")
-  (import executor-types :all)
+  (import executor-types 'all)
 
   (define (executor/_append-1 xs item)
     (append xs (list item)))

@@ -1,4 +1,4 @@
-(import "lib/torch.omni" :all)
+(import "lib/torch.omni" 'all)
 (define u (tensor/randn '(1 4 8)))
 (define uh (omni-torch-fft-rfft u.handle 1))
 (println (format "dtype of rfft result: %d" (omni-torch-dtype uh)))

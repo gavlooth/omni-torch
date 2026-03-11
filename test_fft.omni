@@ -1,4 +1,4 @@
-(import "lib/torch.omni" :all)
+(import "lib/torch.omni" 'all)
 (define u (tensor/randn '(1 4 8)))
 (println "u OK")
 (println (format "u ndim=%d numel=%d" u.ndim u.numel))

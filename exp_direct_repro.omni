@@ -1,3 +1,3 @@
-(import "lib/torch.omni" :all)
+(import "lib/torch.omni" 'all)
 (define arange-t (tensor/arange 1 6 1))
 (println (tensor/exp arange-t).ndim)

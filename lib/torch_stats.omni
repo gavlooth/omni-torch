@@ -16,7 +16,7 @@
           stats/missing/mean stats/missing/mean-dim stats/missing/variance stats/missing/variance-dim
           stats/missing/std stats/missing/std-dim)
 
-  (import "torch_core.omni" :all)
+  (import "torch_core.omni" 'all)
 
   (define (stats/_normalize-dim t dim)
     (let (axis (if (< dim 0) (+ dim t.ndim) dim))

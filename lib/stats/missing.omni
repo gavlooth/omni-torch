@@ -6,7 +6,7 @@
           missing/mean missing/mean-dim missing/variance missing/variance-dim
           missing/std missing/std-dim)
 
-  (import "../torch.omni" :all)
+  (import "../torch.omni" 'all)
 
   (define (_replace-missing-with value nan-replace posinf-replace neginf-replace)
     (let (x (tensor/clone (if (= value.dtype torch/float64)

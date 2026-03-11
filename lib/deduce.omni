@@ -27,8 +27,8 @@
           deduce/order/relation-by-rows
           deduce/rule/logic-output-by-row-order)
 
-  (import "../torch.omni" :all)
-  (import "../data/clean.omni" :all)
+  (import "../torch.omni" 'all)
+  (import "../data/clean.omni" 'all)
 
   (define [type] DeduceRelation
     (^Tensor tensor)

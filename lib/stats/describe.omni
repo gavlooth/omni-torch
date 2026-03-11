@@ -8,7 +8,7 @@
           describe/variance describe/variance-dim
           describe/std describe/std-dim)
 
-  (import "../torch.omni" :all)
+  (import "../torch.omni" 'all)
 
   (define (describe/count t)
     t.numel)

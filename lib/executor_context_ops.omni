@@ -3,8 +3,8 @@
           executor/context-finish-op)
   (import "executor_types.omni")
   (import "executor_context.omni")
-  (import executor-types :all)
-  (import executor-context :all)
+  (import executor-types 'all)
+  (import executor-context 'all)
 
   (define (executor/_append-1 xs item)
     (append xs (list item)))

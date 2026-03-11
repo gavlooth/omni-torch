@@ -1,14 +1,14 @@
 (module torch
   (export)
   (import "torch_core.omni")
-  (export-from torch-core :all))
+  (export-from torch-core 'all))
 
 ;; === Dispatch extensions (global scope) ===
 ;; These extend the global +, -, *, / etc. with Tensor methods.
 ;; Must be outside the module so they modify global method tables.
 
-(import torch-core :all)
-(import "ffi/torch.omni" :all)
+(import torch-core 'all)
+(import "ffi/torch.omni" 'all)
 
 ;; Tensor + Tensor
 (define (+ (^Tensor a) (^Tensor b))

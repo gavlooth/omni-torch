@@ -1,4 +1,4 @@
-(import "lib/torch.omni" :all)
+(import "lib/torch.omni" 'all)
 (define DIM 8)
 (define SEQ 4)
 

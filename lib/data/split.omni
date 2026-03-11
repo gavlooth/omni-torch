@@ -7,7 +7,7 @@
           split/cross-validation
           split/stratified)
 
-  (import "../torch.omni" :all)
+  (import "../torch.omni" 'all)
 
   (define (split/_validate-size data size)
     (if (not (tensor? data))

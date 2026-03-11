@@ -17,8 +17,8 @@
           clean/feature-profile-after-cleanup
           clean/validate-clean-target)
 
-  (import "../torch.omni" :all)
-  (import "../stats/missing.omni" :all)
+  (import "../torch.omni" 'all)
+  (import "../stats/missing.omni" 'all)
 
   (define (clean/_validate-row-major data)
     (if (not (tensor? data))

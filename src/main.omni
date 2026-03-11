@@ -1,8 +1,8 @@
 ;; Omni Torch Demo — Idiomatic PyTorch from Omni Lisp
 
-(import "../lib/torch.omni" :all)
+(import "../lib/torch.omni" 'all)
 
-(define (say s) (begin (display s) (newline)))
+(define (say s) (block (display s) (newline)))
 
 (say "=== Omni Torch Demo ===")
 (say "")

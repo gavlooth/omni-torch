@@ -1,5 +1,5 @@
 (import "executor_types.omni")
-(import executor-types :all)
+(import executor-types 'all)
 
 (define (executor/_ctx max-threads memory-limit-bytes timeout-ms timeout-check-interval-ms cancelled timeout-elapsed-ms heartbeat next-op-id memory-usage-bytes peak-memory-bytes op-events diagnostics op-timings op-memories)
   (ExecutionContext max-threads

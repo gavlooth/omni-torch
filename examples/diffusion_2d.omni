@@ -10,7 +10,7 @@
 ;;
 ;; Run:  make diffusion
 
-(import "../lib/torch.omni" :all)
+(import "../lib/torch.omni" 'all)
 
 ;; ================================================================
 ;;  Constants
@@ -289,7 +289,7 @@
 (display "\n  Sample points:\n")
 (let loop (i 0)
   (if (>= i 8) nil
-    (begin
+    (block
       (let (row (ref samples i))
         (display (format "    [%d] (%.3f, %.3f)\n"
                    i (ref row 0) (ref row 1))))

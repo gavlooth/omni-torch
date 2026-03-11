@@ -1,4 +1,4 @@
-(import "lib/torch.omni" :all)
+(import "lib/torch.omni" 'all)
 (define t (_wrap (omni-torch-randn-2d 3 4)))
 (println (format "t.ndim=%d t.numel=%d" t.ndim t.numel))
 (define t2 (* t 2))

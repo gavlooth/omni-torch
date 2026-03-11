@@ -7,7 +7,7 @@
 ;;
 ;; Run:  make diffusion-llm
 
-(import "../lib/torch.omni" :all)
+(import "../lib/torch.omni" 'all)
 
 ;; ================================================================
 ;;  Hyperparameters

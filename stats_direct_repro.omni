@@ -1,5 +1,5 @@
-(import "lib/torch_stats.omni" :all)
-(import "lib/torch_core.omni" :all)
+(import "lib/torch_stats.omni" 'all)
+(import "lib/torch_core.omni" 'all)
 (define arange-t (tensor/arange 1 6 1))
 (println (stats/describe/count arange-t))
 (println (stats/robust/median arange-t))

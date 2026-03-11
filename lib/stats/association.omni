@@ -4,7 +4,7 @@
   (export association/covariance association/covariance-dim
           association/correlation association/correlation-dim)
 
-  (import "../torch.omni" :all)
+  (import "../torch.omni" 'all)
 
   (define (association/_as-accumulation-tensor t)
     (if (= t.dtype torch/float64)

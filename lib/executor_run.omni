@@ -4,8 +4,8 @@
           executor/blocking-step?)
   (import "executor_context.omni")
   (import "executor_context_ops.omni")
-  (import executor-context :all)
-  (import executor-context-ops :all)
+  (import executor-context 'all)
+  (import executor-context-ops 'all)
 
   (define (executor/blocking-step? op)
     (= op.blocking 1))

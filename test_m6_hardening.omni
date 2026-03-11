@@ -1,10 +1,10 @@
 ;; M6 hardening tests: shape mismatch negatives + mixed finite/non-finite behavior.
 
-(import "lib/torch.omni" :all)
-(import "lib/ffi/torch.omni" :all)
-(import "lib/data/clean.omni" :all)
-(import "lib/data/pipeline.omni" :all)
-(import "lib/data/split.omni" :all)
+(import "lib/torch.omni" 'all)
+(import "lib/ffi/torch.omni" 'all)
+(import "lib/data/clean.omni" 'all)
+(import "lib/data/pipeline.omni" 'all)
+(import "lib/data/split.omni" 'all)
 
 (define (pass msg)
   (println (string-append msg " OK")))

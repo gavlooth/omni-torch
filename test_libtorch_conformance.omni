@@ -1,4 +1,4 @@
-(import "lib/torch.omni" :all)
+(import "lib/torch.omni" 'all)
 
 (define (pass msg)
   (println (string-append msg " OK")))

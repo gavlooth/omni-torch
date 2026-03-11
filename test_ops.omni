@@ -1,4 +1,4 @@
-(import "lib/torch.omni" :all)
+(import "lib/torch.omni" 'all)
 (println "1: rms-norm")
 (define x (tensor/randn '(1 4 8)))
 (define n (tensor/rms-norm x))
